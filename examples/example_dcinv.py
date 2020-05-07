@@ -55,7 +55,7 @@ if __name__ == "__main__":
     for param in disp_param:
         filename, wtype, mode = param
         faxis, disp = np.loadtxt(filename, unpack = True)
-        dc = DispersionCurve(disp, faxis, mode, wtype)
+        dc = DispersionCurve(disp, faxis, mode, wtype, dtype='group')
         dcurves.append(dc)
 
     # Evolutionary optimizer parameters

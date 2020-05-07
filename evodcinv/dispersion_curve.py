@@ -33,7 +33,7 @@ class DispersionCurve:
         Surface wave type.
     """
     def __init__(self, velocity, faxis, mode, wtype = "rayleigh", dtype="phase"):
-        if not isinstance(velocity, (list, np.ndarray)) or np.asanyarray(phase_velocity).ndim != 1:
+        if not isinstance(velocity, (list, np.ndarray)) or np.asanyarray(velocity).ndim != 1:
             raise ValueError("velocity must be a list of 1-D ndarray")
         if not all([ np.min(c) > 0. for c in velocity ]):
             raise ValueError("velocities must be positive")
@@ -41,7 +41,7 @@ class DispersionCurve:
             if dtype == "phase":
                 self._phase_velocity = velocity
                 self._group_velocity = None
-            elif dtype == "group"
+            elif dtype == "group":
                 self._phase_velocity = None
                 self._group_velocity = velocity
             else:
@@ -127,8 +127,8 @@ class DispersionCurve:
         elif self.phase_velocity is not None:
             phase_velocity = self.phase_velocity
         else:
-            raise ValueError("trying to convert undefined phase velocity 
-                    to group velocity")
+            raise ValueError("""trying to convert undefined phase velocity 
+                    to group velocity""")
         
         if isinstance(self.faxis, list):
             faxis = np.array(self.faxis, dtype=float)
@@ -138,8 +138,8 @@ class DispersionCurve:
         omega = 2*np.pi*faxis
         domega = omega[1] - omega[0]
         if not np.allclose(np.diff(omega), domega): 
-            raise ValueError("Frequencies not evenly spaced.
-                    Could not convert from phase velocity to group velocity")
+            raise ValueError("""Frequencies not evenly spaced.
+                    Could not convert from phase velocity to group velocity""")
         dphase_domega = np.gradient(phase_velocity, domega) 
         group_velocity = phase_velocity  + omega * dphase_domega
 
@@ -227,7 +227,7 @@ class DispersionCurve:
 
         if self.dtype_velocity is None and dtype=="group":
             self.to_group_velocity()
-        elif self.dtype_velocity is None and dtype=="phase"
+        elif self.dtype_velocity is None and dtype=="phase":
             raise ValueError("Impossible to convert from group velocity to phase velocity")
         
     @property
