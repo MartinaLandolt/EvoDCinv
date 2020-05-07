@@ -47,7 +47,7 @@ class DispersionCurve:
             else:
                 raise ValueError("dtype must be in %s, got '%s'" % (self._DTYPE, dtype))
             self._npts = len(velocity)
-            self.dtype = dtype
+            self._dtype = dtype
 
         if not isinstance(faxis, (list, np.ndarray)) or np.asanyarray(faxis).ndim != 1 \
             or len(faxis) != self._npts:
@@ -179,6 +179,25 @@ class DispersionCurve:
     @wtype.setter
     def wtype(self, value):
         self._wtype = value
+
+    @property
+    def dtype(self):
+        """
+        str
+        Type of velocity stored (phase or group)
+        """
+        return self._dtype
+
+    @dtype.setter
+    def dtype(self, value):
+        if value not in self._DTYPE:
+            raise ValueError("dtype must be in %s, got '%s'" % (self._DTYPE, dtype))
+        self._dtype = dtype
+
+        if self.dtype_velocity is None and dtype=="group":
+            self.to_group_velocity()
+        elif self.dtype_velocity is None and dtype=="phase"
+            raise ValueError("Impossible to convert from group velocity to phase velocity")
         
     @property
     def npts(self):
