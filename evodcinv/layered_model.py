@@ -161,9 +161,10 @@ class LayeredModel:
                 return np.Inf
             else:
                 dc_calc = th.pick([ dcurve.mode ])
+                dc_calc[0].dtype = dcurve.dtype #todo setr method !
                 if dc_calc[0].npts > 0:
-                    dc_obs = np.interp(dc_calc[0].faxis, dcurve.faxis, dcurve.phase_velocity)
-                    misfit += np.sum(np.square(dc_obs - dc_calc[0].phase_velocity))
+                    dc_obs = np.interp(dc_calc[0].faxis, dcurve.faxis, dcurve.dtype_velocity)
+                    misfit += np.sum(np.square(dc_obs - dc_calc[0].dtype_velocity))
                     count += dcurve.npts
                 else:
                     misfit += np.Inf
