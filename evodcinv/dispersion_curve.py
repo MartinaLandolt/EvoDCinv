@@ -114,9 +114,40 @@ class DispersionCurve:
             ax1 = axes
         lax = ax1.plot(self._faxis, self.dtype_velocity)
         return lax
+
+    def to_group_velocity(self):
+        """
+        Convert phase velocity to group velocity by
+        differentiating phase_velocity
+
+        Only works if frequencies are evenly spaced. 
+        """
+        if isinstance(self.phase_velocity, list):
+            phase_velocity = np.array(self.phase_velocity, dtype=float)
+        elif self.phase_velocity is not None:
+            phase_velocity = self.phase_velocity
+        else:
+            raise ValueError("trying to convert undefined phase velocity 
+                    to group velocity")
+        
+        if isinstance(self.faxis, list):
+            faxis = np.array(self.faxis, dtype=float)
+        else:
+            faxis = self.faxis
+
+        omega = 2*np.pi*faxis
+        domega = omega[1] - omega[0]
+        if not np.allclose(np.diff(omega), domega): 
+            raise ValueError("Frequencies not evenly spaced.
+                    Could not convert from phase velocity to group velocity")
+        dphase_domega = np.gradient(phase_velocity, domega) 
+        group_velocity = phase_velocity  + omega * dphase_domega
+
+        self.group_velocity = group_velocity
     
     @property
     def dtype_velocity(self):
+        """Returns group or phase velocity, such as specified by dtype"""
         dtype_vel = '_'+self.dtype+'_velocity'
         return getattr(self, dtype_vel)
 
