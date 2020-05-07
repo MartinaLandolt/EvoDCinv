@@ -47,6 +47,7 @@ class DispersionCurve:
             else:
                 raise ValueError("dtype must be in %s, got '%s'" % (self._DTYPE, dtype))
             self._npts = len(velocity)
+            self.dtype = dtype
 
         if not isinstance(faxis, (list, np.ndarray)) or np.asanyarray(faxis).ndim != 1 \
             or len(faxis) != self._npts:
@@ -77,7 +78,7 @@ class DispersionCurve:
         """
         if filename is None:
             filename = "%s_mode%d.txt" % (self._wtype, self._mode)
-        X = np.stack((self._faxis, self._phase_velocity), axis = 1)
+        X = np.stack((self._faxis, self.dtype_velocity), axis = 1)
         np.savetxt(filename, X, fmt)
             
     def plot(self, axes = None, figsize = (8, 8), plt_kws = {}):
@@ -111,9 +112,14 @@ class DispersionCurve:
             ax1 = fig.add_subplot(1, 1, 1)
         else:
             ax1 = axes
-        lax = ax1.plot(self._faxis, self._phase_velocity, **plt_kws)
+        lax = ax1.plot(self._faxis, self.dtype_velocity)
         return lax
-            
+    
+    @property
+    def dtype_velocity(self):
+        dtype_vel = '_'+self.dtype+'_velocity'
+        return getattr(self, dtype_vel)
+
     @property
     def phase_velocity(self):
         """
@@ -128,15 +134,16 @@ class DispersionCurve:
         ndarray
         Observed group velocities (in m/s).
         """
-        if isinstance(self._phase_velocity, list):
-            phase = np.array(self._phase_velocity)
-        group = np.diff(phase) # need accurate formula
-        return group
+        return self._group_velocity
     
     @phase_velocity.setter
     def phase_velocity(self, value):
         self._phase_velocity = value
         
+    @group_velocity.setter
+    def group_velocity(self, value):
+        self._group_velocity = value
+
     @property
     def faxis(self):
         """
