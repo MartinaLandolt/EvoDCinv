@@ -16,6 +16,7 @@ __all__ = [ "DispersionCurve" ]
 class DispersionCurve:
     
     _WTYPE = [ "rayleigh", "love" ]
+    _DTYPE = [ "group", "phase" ]
     
     """
     Dispersion curve.
@@ -31,14 +32,22 @@ class DispersionCurve:
     wtype : {'rayleigh', 'love'}, default 'rayleigh'
         Surface wave type.
     """
-    def __init__(self, phase_velocity, faxis, mode, wtype = "rayleigh"):
-        if not isinstance(phase_velocity, (list, np.ndarray)) or np.asanyarray(phase_velocity).ndim != 1:
-            raise ValueError("phase_velocity must be a list of 1-D ndarray")
-        if not all([ np.min(c) > 0. for c in phase_velocity ]):
-            raise ValueError("phase velocities must be positive")
+    def __init__(self, velocity, faxis, mode, wtype = "rayleigh", dtype="phase"):
+        if not isinstance(velocity, (list, np.ndarray)) or np.asanyarray(phase_velocity).ndim != 1:
+            raise ValueError("velocity must be a list of 1-D ndarray")
+        if not all([ np.min(c) > 0. for c in velocity ]):
+            raise ValueError("velocities must be positive")
         else:
-            self._phase_velocity = phase_velocity
-            self._npts = len(phase_velocity)
+            if dtype == "phase":
+                self._phase_velocity = velocity
+                self._group_velocity = None
+            elif dtype == "group"
+                self._phase_velocity = None
+                self._group_velocity = velocity
+            else:
+                raise ValueError("dtype must be in %s, got '%s'" % (self._DTYPE, dtype))
+            self._npts = len(velocity)
+
         if not isinstance(faxis, (list, np.ndarray)) or np.asanyarray(faxis).ndim != 1 \
             or len(faxis) != self._npts:
             raise ValueError("phase_velocity must be a list of 1-D ndarray of length %d" % self._npts)
