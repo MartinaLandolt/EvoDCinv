@@ -112,6 +112,17 @@ class DispersionCurve:
         Observed phase velocities (in m/s).
         """
         return self._phase_velocity
+
+    @property
+    def group_velocity(self):
+        """
+        ndarray
+        Observed group velocities (in m/s).
+        """
+        if isinstance(self._phase_velocity, list):
+            phase = np.array(self._phase_velocity)
+        group = np.diff(phase) # need accurate formula
+        return group
     
     @phase_velocity.setter
     def phase_velocity(self, value):
