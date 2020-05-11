@@ -137,9 +137,9 @@ class DispersionCurve:
 
         omega = 2*np.pi*faxis
         domega = omega[1] - omega[0]
-        if not np.allclose(np.diff(omega), domega): 
-            raise ValueError("""Frequencies not evenly spaced.
-                    Could not convert from phase velocity to group velocity""")
+        if not np.allclose(np.diff(omega), domega, rtol=10**-2): 
+            raise ValueError("""Frequencies not evenly spaced. 
+                   Could not convert from phase velocity to group velocity""")
         dphase_domega = np.gradient(phase_velocity, domega) 
         group_velocity = phase_velocity  + omega * dphase_domega
 
@@ -223,11 +223,11 @@ class DispersionCurve:
     def dtype(self, value):
         if value not in self._DTYPE:
             raise ValueError("dtype must be in %s, got '%s'" % (self._DTYPE, dtype))
-        self._dtype = dtype
+        self._dtype = value
 
-        if self.dtype_velocity is None and dtype=="group":
+        if self.dtype_velocity is None and value=="group":
             self.to_group_velocity()
-        elif self.dtype_velocity is None and dtype=="phase":
+        elif self.dtype_velocity is None and value=="phase":
             raise ValueError("Impossible to convert from group velocity to phase velocity")
         
     @property
