@@ -31,6 +31,8 @@ class DispersionCurve:
         Mode number (0 if fundamental).
     wtype : {'rayleigh', 'love'}, default 'rayleigh'
         Surface wave type.
+    dtype : {'phase', 'group'}, default 'phase'
+        Measured velocity type
     """
     def __init__(self, velocity, faxis, mode, wtype = "rayleigh", dtype="phase"):
         if not isinstance(velocity, (list, np.ndarray)) or np.asanyarray(velocity).ndim != 1:
@@ -151,6 +153,11 @@ class DispersionCurve:
         dtype_vel = '_'+self.dtype+'_velocity'
         return getattr(self, dtype_vel)
 
+    @dtype_velocity.setter
+    def dtype_velocity(self, value):
+        dtype_vel = '_'+self.dtype+'_velocity'
+        setattr(self, dtype_vel, value)
+
     @property
     def phase_velocity(self):
         """
@@ -187,6 +194,11 @@ class DispersionCurve:
     def faxis(self, value):
         self._faxis = value
         
+    def interpolate_faxis(self, value):
+        """Interpolates velocity for a given frequency axis"""
+        self.dtype_velocity = np.interp(value, self.faxis, self.dtype_velocity)
+        self.faxis = value
+
     @property
     def mode(self):
         """
