@@ -19,3 +19,7 @@ build/
 # PBS related files
 examples/test.sh
 examples/test_sub
+
+# Test results
+*.png
+output/
