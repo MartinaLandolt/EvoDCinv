@@ -9,6 +9,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+import h5py
     
 __all__ = [ "DispersionCurve" ]
 
@@ -66,6 +67,20 @@ class DispersionCurve:
             raise ValueError("wtype must be in %s, got '%s'" % (self._WTYPE, wtype))
         else:
             self._wtype = wtype
+
+    @classmethod
+    def from_h5(cls, h5_path, cell_id, mode, wtype="rayleigh", dtype="group"):
+        """
+        Load dispersion curve using h5 file collecting all dispersion curves 
+        for a given analysis
+        """
+
+        with h5py.File(h5_path, 'r') as fin:
+            freq = fin["Frequency"][:]
+            vel = fin["Disp_curve"][cell_id, :]
+
+        return cls(vel, freq, mode, wtype, dtype)
+
             
     def save(self, filename = None, fmt = "%.8f"):
         """
