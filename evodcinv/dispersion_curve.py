@@ -69,15 +69,18 @@ class DispersionCurve:
             self._wtype = wtype
 
     @classmethod
-    def from_h5(cls, h5_path, cell_id, mode, wtype="rayleigh", dtype="group"):
+    def from_h5(cls, h5_path, coordinates, mode, wtype="rayleigh", dtype="group"):
         """
         Load dispersion curve using h5 file collecting all dispersion curves 
         for a given analysis
+
+        :param coordinates: Array index of the dispersion curve to load. 
+        :type coordinates: list of 2 int
         """
 
         with h5py.File(h5_path, 'r') as fin:
             freq = fin["Frequency"][:]
-            vel = fin["Disp_curve"][cell_id, :]
+            vel = fin["DispersionCurve"][coordinates[0], coordinates[1], :]
 
         return cls(vel, freq, mode, wtype, dtype)
 
@@ -129,7 +132,7 @@ class DispersionCurve:
             ax1 = fig.add_subplot(1, 1, 1)
         else:
             ax1 = axes
-        lax = ax1.plot(self._faxis, self.dtype_velocity)
+        lax = ax1.plot(self._faxis, self.dtype_velocity, **plt_kws)
         return lax
 
     def to_group_velocity(self):
