@@ -25,7 +25,7 @@ if __name__ == "__main__":
     # Parameters
     wtypes = [ "rayleigh", "love" ]
     fmin, fmax = 0.1, 10.
-    skip = 50
+    skip = 1
     zmax = 1500
     outdir = "output"                   # Output directory
     cmap = "viridis_r"                  # Colormap
@@ -38,6 +38,14 @@ if __name__ == "__main__":
     if "love" in wtypes:
         lcurves = pickle.load(open("%s/lcurves.pickle" % outdir, "rb"))[::skip]
     
+    ###Check secular function
+    best_model = models[np.argmin(energy)]
+    vel = best_model.params2lay()
+    th = ThomsonHaskell(vel, dcurves[0].wtype)
+    panel = th.propagate(dcurves[0].faxis, ny = ny, domain = "fc")
+    inverted_dc = th.pick([ dcurves[0].mode ])[0]
+    th.plot()
+
     # Convert acceptable models to continuous velocity models
     vel, az = np.transpose([ params2vel(m, zmax = zmax) for m in models ], axes = [ 1, 0, 2 ])
     

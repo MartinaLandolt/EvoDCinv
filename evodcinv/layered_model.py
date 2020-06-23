@@ -142,9 +142,9 @@ class LayeredModel:
         ea = Evolutionary(self._costfunc, lower, upper, args = args, **evo_kws)
         xopt, gfit = ea.optimize(**opt_kws)
         self._misfit = gfit
-        self._model = np.array(xopt, dtype = dtype)
-        self._misfits = np.array(ea.energy, dtype = dtype)
-        self._models = np.array(ea.models, dtype = dtype)
+        self._model = np.array(xopt, dtype = dtype) 
+        self._misfits = np.array(ea.energy, dtype = dtype) # [popsize, max_iter]
+        self._models = np.array(ea.models, dtype = dtype) # [popsize, problem_dim, max_iter]
         self._n_iter = ea.n_iter
         self._n_eval = ea.n_eval
         return self
