@@ -49,7 +49,7 @@ class ThomsonHaskell:
         else:
             self._wtype = wtype
     
-    def propagate(self, f, ny = 100, domain = "fc", eps = 0., n_threads = 1):
+    def propagate(self, f, ny = 100, domain = "fc", eps = 0.1, n_threads = 1):
         """
         Compute the analytical dispersion curve modes.
         
@@ -143,20 +143,34 @@ class ThomsonHaskell:
         
         dcurve = [ [] for m in modes ]
         faxis = [ [] for m in modes ]
+
+        n_mode = 0
         for i, f in enumerate(self._faxis):
             tmp = self._panel[:,i] / np.abs(self._panel[:,i]).max()
             idx = np.where((tmp[:-1] * tmp[1:]) < 0.)[0]
-            for j, m in enumerate(modes):
-                if len(idx) >= m+1:
-                    xr = [ tmp[idx[m]], tmp[idx[m]+1] ]
-                    vr = [ self._yaxis[idx[m]], self._yaxis[idx[m]+1] ]
-                    x = ( vr[0] * xr[1] - vr[1] * xr[0] ) / ( xr[1] - xr[0] )
-                    dcurve[j].append(x)
-                    faxis[j].append(f)
+            n_mode_new = len(idx)
+            if n_mode_new >= n_mode:
+                n_mode = n_mode_new
+                for j, m in enumerate(modes):
+                    if len(idx) >= m+1:
+                        xr = [ tmp[idx[m]], tmp[idx[m]+1] ]
+                        vr = [ self._yaxis[idx[m]], self._yaxis[idx[m]+1] ]
+                        x = ( vr[0] * xr[1] - vr[1] * xr[0] ) / ( xr[1] - xr[0] )
+                        dcurve[j].append(x)
+                        faxis[j].append(f)
+        for j, m in enumerate(modes):
+            if len(faxis[j]) > 0:
+                faxis_full = self._faxis[(self._faxis>=min(faxis[j])) & (self._faxis<=max(faxis[j]))]
+                dcurve_full = np.interp(faxis_full,faxis[j],dcurve[j])
+                faxis[j] = faxis_full
+                dcurve[j] = dcurve_full
+
+
         
         dcurves = []
+
         for i, (d, f) in enumerate(zip(dcurve, faxis)):
-            dcurves.append(DispersionCurve(d, f, int(modes[i]), self._wtype))
+            dcurves.append(DispersionCurve(d, f, int(modes[i]), None, self._wtype, dtype="phase"))
             
 #        dcurve = dc.pick(self._panel, self._faxis, self._yaxis, modes, n_threads = n_threads)
 #        dcurves = []
@@ -289,7 +303,19 @@ class ThomsonHaskell:
     @faxis.setter
     def faxis(self, value):
         self._faxis = value
-        
+
+    @property
+    def uncertainties(self):
+        """
+        list or ndarray
+        Uncertainty on the observed phase velocity.
+        """
+        return self._uncertainties
+
+    @uncertainties.setter
+    def uncertainties(self, value):
+        self._uncertainties = value
+
     @property
     def yaxis(self):
         """

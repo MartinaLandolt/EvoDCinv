@@ -35,7 +35,7 @@ class DispersionCurve:
     dtype : {'phase', 'group'}, default 'phase'
         Measured velocity type
     """
-    def __init__(self, velocity, faxis, mode, wtype = "rayleigh", dtype="phase"):
+    def __init__(self, velocity, faxis, mode, uncertainties = None, wtype = "rayleigh", dtype="phase"):
         if not isinstance(velocity, (list, np.ndarray)) or np.asanyarray(velocity).ndim != 1:
             raise ValueError("velocity must be a list of 1-D ndarray")
         if not all([ np.min(c) > 0. for c in velocity ]):
@@ -59,6 +59,15 @@ class DispersionCurve:
             raise ValueError("frequencies must be positive")
         else:
             self._faxis = faxis
+        if uncertainties is not None:
+            if not isinstance(uncertainties, (list, np.ndarray)) or np.asanyarray(uncertainties).ndim != 1 \
+                or len(uncertainties) != self._npts:
+                raise ValueError("uncertainties must be a list of 1-D ndarray of length %d" % self._npts)
+            if not np.all([ np.min(u) >= 0. for u in uncertainties ]):
+                raise ValueError("uncertainties must be positive")
+            else:
+                self._uncertainties = uncertainties
+
         if not isinstance(mode, int) or mode < 0:
             raise ValueError("mode must be a positive integer")
         else:
@@ -71,10 +80,10 @@ class DispersionCurve:
     @classmethod
     def from_h5(cls, h5_path, coordinates, mode, wtype="rayleigh", dtype="group"):
         """
-        Load dispersion curve using h5 file collecting all dispersion curves 
+        Load dispersion curve using h5 file collecting all dispersion curves
         for a given analysis
 
-        :param coordinates: Array index of the dispersion curve to load. 
+        :param coordinates: Array index of the dispersion curve to load.
         :type coordinates: list of 2 int
         """
 
@@ -140,7 +149,7 @@ class DispersionCurve:
         Convert phase velocity to group velocity by
         differentiating phase_velocity
 
-        Only works if frequencies are evenly spaced. 
+        Only works if frequencies are evenly spaced.
         """
         if isinstance(self.phase_velocity, list):
             phase_velocity = np.array(self.phase_velocity, dtype=float)
@@ -149,7 +158,7 @@ class DispersionCurve:
         else:
             raise ValueError("""trying to convert undefined phase velocity 
                     to group velocity""")
-        
+
         if isinstance(self.faxis, list):
             faxis = np.array(self.faxis, dtype=float)
         else:
@@ -157,14 +166,17 @@ class DispersionCurve:
 
         omega = 2*np.pi*faxis
         domega = omega[1] - omega[0]
-        if not np.allclose(np.diff(omega), domega, rtol=10**-2): 
+        if not np.allclose(np.diff(omega), domega, rtol=10**-2):
             raise ValueError("""Frequencies not evenly spaced. 
                    Could not convert from phase velocity to group velocity""")
-        dphase_domega = np.gradient(phase_velocity, domega) 
-        group_velocity = phase_velocity  + omega * dphase_domega
+        dphase_domega = np.gradient(phase_velocity, domega)
+        #group_velocity = phase_velocity  + omega * dphase_domega
+        group_velocity = phase_velocity / (1 - omega/phase_velocity * dphase_domega)
 
         self.group_velocity = group_velocity
-    
+        self.dtype = 'group'
+        self.dtype_velocity = group_velocity
+
     @property
     def dtype_velocity(self):
         """Returns group or phase velocity, such as specified by dtype"""
@@ -212,6 +224,18 @@ class DispersionCurve:
     def faxis(self, value):
         self._faxis = value
         
+    @property
+    def uncertainties(self):
+        """
+        list or ndarray
+        Uncertainty on the observed phase velocity.
+        """
+        return self._uncertainties
+
+    @uncertainties.setter
+    def uncertainties(self, value):
+        self._uncertainties = value
+
     def interpolate_faxis(self, value):
         """Interpolates velocity for a given frequency axis"""
         self.dtype_velocity = np.interp(value, self.faxis, self.dtype_velocity)

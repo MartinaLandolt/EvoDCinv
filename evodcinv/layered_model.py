@@ -161,10 +161,13 @@ class LayeredModel:
                 return np.Inf
             else:
                 dc_calc = th.pick([ dcurve.mode ])
+                for dc in dc_calc:
+                    dc.dtype = dcurve.dtype
                 if dc_calc[0].npts > 0:
-                    dc_calc[0].interpolate_faxis(dcurve.faxis)
-                    dc_calc[0].dtype = dcurve.dtype
-                    misfit += np.sum(np.square(dcurve.dtype_velocity - dc_calc[0].dtype_velocity))
+                    dc_obs = np.interp(dc_calc[0].faxis, dcurve.faxis, dcurve.dtype_velocity)
+                    n = dc_calc[0].npts
+                    dc_unc = dcurve.uncertainties[:n]
+                    misfit += np.sum(np.square(dc_obs - dc_calc[0].dtype_velocity)/np.square(dc_unc))
                     count += dcurve.npts
                 else:
                     misfit += np.Inf
