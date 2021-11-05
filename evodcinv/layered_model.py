@@ -161,9 +161,9 @@ class LayeredModel:
                 return np.Inf
             else:
                 dc_calc = th.pick([ dcurve.mode ])
-                for dc in dc_calc:
-                    dc.dtype = dcurve.dtype
                 if dc_calc[0].npts > 0:
+                    for dc in dc_calc:
+                        dc.dtype = dcurve.dtype
                     dc_obs = np.interp(dc_calc[0].faxis, dcurve.faxis, dcurve.dtype_velocity)
                     n = dc_calc[0].npts
                     dc_unc = dcurve.uncertainties[:n]
@@ -171,7 +171,8 @@ class LayeredModel:
                     count += dcurve.npts
                 else:
                     misfit += np.Inf
-                    break
+                    #break
+                    continue
         if count != 0:
             return np.sqrt(misfit / count)
         else:

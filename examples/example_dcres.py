@@ -16,8 +16,6 @@ except ImportError:
     sys.path.append("../")
     from evodcinv import LayeredModel, ThomsonHaskell, params2lay
 
-# sys.path.insert(5,'/home_c/LANDOLT/evodcinv_old_merge_uncertainties_and_groupV/evodcinv')
-# sys.path.remove('/home_c/LANDOLT/evodcinv_old_version/src/evodcinv')
 
 def to_group_velocity(phase_velocity,faxis):
     """
@@ -62,7 +60,8 @@ if __name__ == "__main__":
     #perc = 90                         # Maximum RMS threshold as a percentage of best fitting models
     perc = 1/np.sqrt(np.e)
     n_sigma_keep = 1
-    data_dir = 'data'
+    zmin = 0; zmax = 2000; z_axis_step = 10
+    data_dir = input_name
     outdir = "output/" + output_name
     figdir = outdir + "/figures"  # Output figures directory
     if not os.path.exists(figdir):
@@ -216,6 +215,31 @@ if __name__ == "__main__":
     energy = energy[idx]
     pickle.dump(models, open("%s/models.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
     pickle.dump(energy, open("%s/energy.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
+
+    # Keep good fitting models only : save mean, min and max of kept models
+    z_axis = np.arange(zmin, zmax + z_axis_step, z_axis_step)
+        # discretisize model on this z axis
+    # new_models = []
+    # for mod in models:
+    #     m_new = np.empty((0,3), float)
+    #     for z in z_axis:
+    #         model_depth=0
+    #         first = 0
+    #         for i in range(len(mod[3:6])):
+    #             model_depth = model_depth + mod[3+i]
+    #             if z <= model_depth:
+    #                 if first == 0:
+    #                     first = 1
+    #                     new_row = [z, mod[i], mod[i+6]] #depth, Vs, rho
+    #                     m_new = np.vstack([m_new, new_row])
+    #                 else:
+    #                     break
+    #     new_models.append(m_new)
+    #
+    # model_moy = []
+    # for z in z_axis:
+    #     model_moy = model_moy +
+
 
     # Uncertainty figure chowing limit for models chosen
 

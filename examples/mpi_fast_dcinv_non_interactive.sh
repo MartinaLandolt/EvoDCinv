@@ -11,8 +11,9 @@ num_procs=$1
 num_threads=$2
 dtype=$3
 out_name=$4
-$MPIEXEC -np $num_procs --bind-to core:overload-allowed --map-by ppr:$num_procs:node:pe=$num_threads $EXEC -n $num_threads $dtype $out_name > output/log_file
+data=$5
+$MPIEXEC -np $num_procs --bind-to core:overload-allowed --map-by ppr:$num_procs:node:pe=$num_threads $EXEC -n $num_threads $dtype $out_name > output/log_file_fast_dcinv.txt
 
-python example_dcres.py -n 32 $dtype $out_name "data/groupV_model"
+python example_dcres.py -n $num_threads $dtype $out_name $data>> output/log_file_fast_dcinv.txt
 
-python example_dcres_view.py $dtype $out_name "data/groupV_model"
+python example_dcres_view.py $dtype $out_name $data>> output/log_file_fast_dcinv.txt

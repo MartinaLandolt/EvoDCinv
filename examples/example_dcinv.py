@@ -21,27 +21,6 @@ except ImportError:
     from evodcinv import DispersionCurve, LayeredModel, progress, ThomsonHaskell
 
 
-
-def to_group_velocity(phase_velocity, faxis):
-    """
-    Convert phase velocity to group velocity by
-    differentiating phase_velocity
-
-    Only works if frequencies are evenly spaced.
-    """
-
-    omega = 2 * np.pi * faxis
-    domega = omega[1] - omega[0]
-    if not np.allclose(np.diff(omega), domega, rtol=10 ** -2):
-        raise ValueError("""Frequencies not evenly spaced. 
-               Could not convert from phase velocity to group velocity""")
-    dphase_domega = np.gradient(phase_velocity, domega)
-    # group_velocity = phase_velocity  + omega * dphase_domega
-    group_velocity = phase_velocity / (1 - omega / phase_velocity * dphase_domega)
-
-    return group_velocity
-
-
 if __name__ == "__main__":
     # Initialize MPI
     if mpi_exist:
@@ -54,44 +33,63 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("-n", "--num_threads", type = int, default = 8)
     parser.add_argument("dtype", type=str, default="phase")
+    parser.add_argument("output_name", help="Enter output file name",
+                        type=str, default="output")
+    parser.add_argument("input_name", help="Enter output file name",
+                        type=str, default="data")
     args = parser.parse_args()
     dtype = args.dtype
+    output_name = parser.parse_args().output_name
+    data_dir = parser.parse_args().input_name
         
     # Parameters
     ny = 200                        # Number of velocity discretization points
     max_run = 10                    # Number of runs
     popsize = 10
     max_iter = 100
-    outdir = "output2"               # Output directory
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
+    outdir = "output/" + output_name             # Output directory
 
     # Inversion boundaries
     beta = np.array([ [ 100., 1000. ], [ 500., 2000. ], [ 500., 2000. ] ])
     thickness = np.array([ [ 100., 1000. ], [ 100., 500. ], [ 99999., 99999. ] ])
     
     # Initialize dispersion curves
-    disp_param = [
-        ( "data/rayleigh_mode0.txt", "rayleigh", 0 ),
-        ( "data/rayleigh_mode1.txt", "rayleigh", 1 ),
-        ( "data/love_mode0.txt", "love", 0 ),
-        ( "data/love_mode1.txt", "love", 1 ),
-        ]
-    
+    disp_param = list()
+    filenames = os.listdir('%s/' % data_dir)
+    for name in filenames:
+        if '.txt' in name:
+            path = '%s/%s' % (data_dir, name)
+            if 'rayleigh' in name:
+                wtype = 'rayleigh'
+            elif 'love' in name:
+                wtype = 'love'
+            else:
+                continue
+            mode = [int(s) for s in list(name) if s.isdigit()]
+            mode = int(str(mode)[1:-1])
+            disp_param.append((path, wtype, mode))
+    # disp_param = [
+    #     ( "data/rayleigh_mode0.txt", "rayleigh", 0 ),
+    #     ( "data/rayleigh_mode1.txt", "rayleigh", 1 ),
+    #     ( "data/love_mode0.txt", "love", 0 ),
+    #     ( "data/love_mode1.txt", "love", 1 ),
+    #     ]
+
     dcurves = []
     for param in disp_param:
         filename, wtype, mode = param
-        faxis, disp, uncertainties = np.loadtxt(filename, unpack = True)
-        if dtype == 'group':
-            disp = to_group_velocity(disp, faxis)
-        dc = DispersionCurve(disp, faxis, mode, uncertainties, wtype, dtype=dtype)
+        faxis, disp, uncertainties = np.loadtxt(filename, unpack=True)
+        if 'group' in filename:
+            dc = DispersionCurve(disp, faxis, mode, uncertainties, wtype, dtype='group')
+        else:
+            dc = DispersionCurve(disp, faxis, mode, uncertainties, wtype, dtype='phase')
         dc.dtype = dtype
         dcurves.append(dc)
 
     # Evolutionary optimizer parameters
-    evo_kws = dict(popsize = popsize, max_iter = max_iter, constrain = True, mpi = mpi_exist)
-    opt_kws = dict(solver = "cpso")
-        
+    evo_kws = dict(popsize=10, max_iter=100, constrain=True, mpi=mpi_exist) #, random_state=1 to test same invertion on several runs
+    opt_kws = dict(solver="cpso")
+
     # Multiple inversions
     if mpi_rank == 0:
         starttime = time.time()
@@ -107,10 +105,10 @@ if __name__ == "__main__":
             lm.save("%s/run%d.pickle" % (outdir, i + 1))
             models.append(deepcopy(lm))
             progress(i, max_run, "perc", prefix="Inverting dispersion curves: ")
-        
+
     if mpi_rank == 0:
         print("\n")
-        misfits = [ m.misfit for m in models ]
+        misfits = [m.misfit for m in models]
         print(models[np.argmin(misfits)])
         print("Elapsed time: %.2f seconds\n" % (time.time() - starttime))
 
@@ -121,4 +119,4 @@ if __name__ == "__main__":
         th.propagate(dcurves[0].faxis, ny=ny, domain="fc")
         inverted_dc = th.pick([dcurves[0].mode])[0]
         inverted_dc.dtype = dcurves[0].dtype
-        inverted_dc.save(f"output/best_model_{dtype}_dc.txt")
+        inverted_dc.save("%s/best_model_%s_dc.txt" % (outdir, dtype))

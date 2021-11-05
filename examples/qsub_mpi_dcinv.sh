@@ -2,6 +2,7 @@
 
 source ~/.profile
 
-conda activate evodcinv_old_with_uncertainties_env
-cd evodcinv_old_merge_uncertainties_and_groupV/examples/
-./mpi_dcinv_non_interactive.sh 8 4 
+conda activate evodcinv_github_env1
+cd evodcinv_github/EvoDCinv/examples/
+./mpi_dcinv_non_interactive.sh 8 4 'group' 'dcinv_group_data' 'data/groupV_model'
+#./mpi_dcinv_non_interactive.sh 8 4 'phase' 'dcinv_phase' 'data'

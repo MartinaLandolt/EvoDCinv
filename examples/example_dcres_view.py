@@ -17,9 +17,6 @@ except ImportError:
     sys.path.append("../")
     from evodcinv import params2vel
 
-#sys.path.insert(5,'/home_c/LANDOLT/evodcinv_old_merge_uncertainties_and_groupV/evodcinv')
-#sys.path.remove('/home_c/LANDOLT/evodcinv_old_version/src/evodcinv')
-
 def to_group_velocity(phase_velocity,faxis):
     """
     Convert phase velocity to group velocity by

@@ -170,9 +170,13 @@ class ThomsonHaskell:
         dcurves = []
 
         for i, (d, f) in enumerate(zip(dcurve, faxis)):
-            dcurves.append(DispersionCurve(d, f, int(modes[i]), None, self._wtype, dtype="phase"))
-            
-#        dcurve = dc.pick(self._panel, self._faxis, self._yaxis, modes, n_threads = n_threads)
+            d = DispersionCurve(d, f, int(modes[i]), None, self._wtype, dtype="phase")
+            # if len(d.dtype_velocity) == 0 :
+            #     print('no dc picked')
+            dcurves.append(d)
+
+
+        #        dcurve = dc.pick(self._panel, self._faxis, self._yaxis, modes, n_threads = n_threads)
 #        dcurves = []
 #        for i, df in enumerate(dcurve):
 #            d, f = df
