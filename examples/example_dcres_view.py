@@ -117,6 +117,11 @@ if __name__ == "__main__":
     trueVs = trueV_file[1, :]
     trueThickness = trueV_file[3, :]
 
+    # Import mean, min and max models
+    model_moy = np.loadtxt('%s/mean_model.txt' % outdir, unpack=True)
+    model_min = np.loadtxt('%s/min_models.txt' % outdir, unpack=True)
+    model_max = np.loadtxt('%s/max_models.txt' % outdir, unpack=True)
+
     # Import data dispersion curves
     if "rayleigh" in wtypes:
         Real_Rayleigh, Model_Rayleigh = [], []
@@ -147,10 +152,14 @@ if __name__ == "__main__":
 
     # Initialize figures
     fig1 = plt.figure(figsize=(5, 5), facecolor="white")
+    fig1_bis = plt.figure(figsize=(5, 5), facecolor="white")
     fig2 = plt.figure(figsize=(5 * len(wtypes), 5), facecolor="white")
+
     fig1.patch.set_alpha(0.)
+    fig1_bis.patch.set_alpha(0.)
     fig2.patch.set_alpha(0.)
     ax1 = fig1.add_subplot(1, 1, 1)
+    ax1_bis = fig1_bis.add_subplot(1, 1, 1)
     ax2 = [fig2.add_subplot(1, len(wtypes), i + 1) for i, w in enumerate(wtypes)]
 
     # Make colormap
@@ -171,8 +180,13 @@ if __name__ == "__main__":
     for i in range(len(trueVs)):
         trueThickness_ax.extend([thickness, thickness+trueThickness[i]])
         thickness = thickness+trueThickness[i]
-    ax1.plot(trueVs_ax, trueThickness_ax, color='red')
+    ax1.plot(trueVs_ax, trueThickness_ax, color='red', label='true model')
 
+    # Plot mean, min and max model on top
+    ax1.plot(model_moy[:, 1], model_moy[:, 0], color='magenta', label='mean model')
+    ax1.fill_betweenx(model_min[:, 0], model_min[:, 1], model_max[:, 1], alpha=0.2)
+
+    ax1.legend()
     ax1.set_xlabel("Velocity (m/s)", fontsize=12)
     ax1.set_ylabel("Depth (m)", fontsize=12)
     ax1.set_ylim(a[0], a[-1])
@@ -181,6 +195,17 @@ if __name__ == "__main__":
 
     cb1 = fig1.colorbar(smap)
     cb1.set_label("RMS", fontsize=12)
+
+    # Figure 1 bis: models only mean, max, min and true model represented
+    ax1_bis.plot(trueVs_ax, trueThickness_ax, color='red', label='true model')
+    ax1_bis.plot(model_moy[:, 1], model_moy[:, 0], color='magenta', label='mean model')
+    ax1_bis.fill_betweenx(model_min[:, 0], model_min[:, 1], model_max[:, 1], alpha=0.2, label='range of model')
+    ax1_bis.legend()
+    ax1_bis.set_xlabel("Velocity (m/s)", fontsize=12)
+    ax1_bis.set_ylabel("Depth (m)", fontsize=12)
+    ax1_bis.set_ylim(a[0], a[-1])
+    ax1_bis.invert_yaxis()
+    ax1_bis.grid(True, linestyle=":")
 
     # PLot dispersion curves
     if "rayleigh" in wtypes:
@@ -212,11 +237,13 @@ if __name__ == "__main__":
         ax.grid(True, linestyle=":")
 
     fig1.tight_layout()
+    fig1_bis.tight_layout()
     fig2.tight_layout()
     # fig1.show()
     # fig2.show()
 
     fig1.savefig(figdir + '/models_vitesse.png', dpi=400)
+    fig1_bis.savefig(figdir + '/models_vitesse_moyen.png', dpi=400)
     fig2.savefig(figdir + f'/{dtype}_dispertion_curves.png', dpi=400)
 
     #figure 2 from Simon's script with uncertainties
