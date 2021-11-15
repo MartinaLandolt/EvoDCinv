@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     # Parameters
     fmin, fmax = 0.1, 10.
-    skip = 50
+    skip = 1 #50
     zmax = 1500
     data_dir = input_name
     outdir = "output/" + output_name # Output directory
@@ -163,12 +163,14 @@ if __name__ == "__main__":
     ax2 = [fig2.add_subplot(1, len(wtypes), i + 1) for i, w in enumerate(wtypes)]
 
     # Make colormap
-    norm = Normalize(energy.min(), energy.max())
+    apost = np.exp(-0.5*energy**2)
+    norm = Normalize(min(apost), max(apost))
+    #norm = Normalize(energy.min(), energy.max())
     smap = ScalarMappable(norm, cmap)
     smap.set_array([])
 
     # Plot velocity models
-    for v, a, e in zip(vel, az, energy):
+    for v, a, e in zip(vel, az, apost):
         ax1.plot(v, a, color=smap.to_rgba(e))
 
     # Plot true velocity model on top
@@ -194,7 +196,7 @@ if __name__ == "__main__":
     ax1.grid(True, linestyle=":")
 
     cb1 = fig1.colorbar(smap)
-    cb1.set_label("RMS", fontsize=12)
+    cb1.set_label("apost", fontsize=12)
 
     # Figure 1 bis: models only mean, max, min and true model represented
     ax1_bis.plot(trueVs_ax, trueThickness_ax, color='red', label='true model')
@@ -210,7 +212,7 @@ if __name__ == "__main__":
     # PLot dispersion curves
     if "rayleigh" in wtypes:
         ax = ax2[max(0, len(wtypes) - 2)]
-        for dcurves, e in zip(rcurves, energy):
+        for dcurves, e in zip(rcurves, apost):
             for dcurve in dcurves:
                 dcurve.plot(axes=ax, plt_kws=dict(color=smap.to_rgba(e)))
         for mode in ind_ray:
@@ -224,7 +226,7 @@ if __name__ == "__main__":
 
     if "love" in wtypes:
         ax = ax2[max(0, len(wtypes) - 1)]
-        for dcurves, e in zip(lcurves, energy):
+        for dcurves, e in zip(lcurves, apost):
             for dcurve in dcurves:
                 dcurve.plot(axes=ax, plt_kws=dict(color=smap.to_rgba(e)))
         for mode in ind_love:
@@ -255,12 +257,12 @@ if __name__ == "__main__":
     ind = np.argmin(energy)
     if "rayleigh" in wtypes:
         ax = ax3[max(0, len(wtypes) - 2)]
-        for dcurves, e in zip(rcurves, energy):
+        for dcurves, e in zip(rcurves, apost):
             for dcurve in dcurves:
                 dcurve.plot(axes=ax, plt_kws=dict(color=smap.to_rgba(e)))
         for mode in ind_ray:
             for freq, v, inc in zip(Real_Rayleigh[mode][0], Real_Rayleigh[mode][1], Real_Rayleigh[mode][2]):
-                ax.errorbar(freq, v, yerr=inc, fmt="o", ecolor="blue", capsize=1.5, mfc='k', mec='k', ms=3, mew=1, zorder=10)
+                ax.errorbar(freq, v, yerr=inc, fmt="o", ecolor="gray", capsize=1.5, mfc='k', mec='k', ms=3, mew=0.3, zorder=10, alpha=0.5)
         # for filename in sorted(r_filenames):
         #     R = np.loadtxt(open(("%s/%s" % (data_dir,filename)), "rb"), unpack=True)
         #     ax.errorbar(R[0], R[1], yerr=R[2], fmt="o", ecolor="blue", capsize=1.5, mfc='k', mec='k', ms=3, mew=1,
@@ -274,12 +276,12 @@ if __name__ == "__main__":
 
     if "love" in wtypes:
         ax = ax3[max(0, len(wtypes) - 1)]
-        for dcurves, e in zip(lcurves, energy):
+        for dcurves, e in zip(lcurves, apost):
             for dcurve in dcurves:
                 dcurve.plot(axes=ax, plt_kws=dict(color=smap.to_rgba(e)))
-        for mode in ind_ray:
+        for mode in ind_love:
             for freq, v, inc in zip(Real_Love[mode][0], Real_Love[mode][1], Real_Love[mode][2]):
-                ax.errorbar(freq, v, yerr=inc, fmt="o", ecolor="blue", capsize=1.5, mfc='k', mec='k', ms=3, mew=1, zorder=10)
+                ax.errorbar(freq, v, yerr=inc, fmt="o", ecolor="gray", capsize=1.5, mfc='k', mec='k', ms=3, mew=0.3, zorder=10, alpha=0.5)
         # for filename in sorted(l_filenames):
         #     L = np.loadtxt(open(("%s/%s" % (data_dir,filename)), "rb"), unpack=True)
         #     ax.errorbar(L[0], L[1], yerr=L[2], fmt="o", ecolor="blue", capsize=1.5, mfc='k', mec='k', ms=3, mew=1,

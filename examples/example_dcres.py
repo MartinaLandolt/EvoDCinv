@@ -208,11 +208,13 @@ if __name__ == "__main__":
     idx = np.where(apost > threshold)[0]
     models = models[idx]
     energy = energy[idx]
+    apost = apost[idx]
 
     # Keep good fitting models only : sort models
     idx = np.argsort(energy)[::-1]
     models = models[idx]
     energy = energy[idx]
+    apost = apost[idx]
 
     # Keep good fitting models only : choose models with dispersion curves freq min >= freq min from data
     # Recompute dispersion curves
@@ -268,49 +270,51 @@ if __name__ == "__main__":
 
     models = models[idx]
     energy = energy[idx]
-
+    apost = apost[idx]
 
     # Keep good fitting models only : save models
     idx = np.argsort(energy)[::-1]
     models = models[idx]
     energy = energy[idx]
+    apost = apost[idx]
     pickle.dump(models, open("%s/models.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
     pickle.dump(energy, open("%s/energy.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
 
     # Keep good fitting models only : save mean, min and max of kept models
     z_axis = np.arange(zmin, zmax + z_axis_step, z_axis_step)
         # discretisize model on this z axis
+
+    def z_disctretisation(model, z_axis, n):
+        vel_new = np.nan * np.zeros(len(z_axis))
+        rho_new = np.nan * np.zeros(len(z_axis))
+        z_cum = np.hstack((0, np.cumsum(model[n:2 * n])))
+        for i in range(len(z_cum) - 1):
+            z_min = z_cum[i]
+            z_max = z_cum[i + 1]
+            vel_new[(z_axis < z_max) & (z_axis >= z_min)] = model[i]
+            rho_new[(z_axis < z_max) & (z_axis >= z_min)] = model[i+2*n]
+        m_new = np.vstack([z_axis,vel_new, rho_new])
+        return m_new
+
+    n = int(len(models[0, :]) / 3)
     new_models = []
     for mod in models:
-        m_new = np.empty((0,3), float)
-        for z in z_axis:
-            model_depth=0
-            first = 0
-            for i in range(len(mod[3:6])):
-                model_depth = model_depth + mod[3+i]
-                if z <= model_depth:
-                    if first == 0:
-                        first = 1
-                        new_row = [z, mod[i], mod[i+6]] #depth, Vs, rho
-                        m_new = np.vstack([m_new, new_row])
-                    else:
-                        break
+        m_new = z_disctretisation(mod, z_axis, n)
         new_models.append(m_new)
 
     model_moy = np.empty(len(z_axis))
     model_min = np.empty(len(z_axis))
     model_max = np.empty(len(z_axis))
     for z in range(len(z_axis)):
-        model_moy[z] = np.nansum([ (model[z,1]*np.exp(-0.5*energy[i]**2))
+        model_moy[z] = np.nansum([ (model[1,z]*np.exp(-0.5*energy[i]**2))
                                    for (i,model) in enumerate(new_models)])\
                        /np.nansum(np.exp(-0.5*energy**2))
-        model_min[z] = np.nanmin([model[z,1] for model in new_models])
-        model_max[z] = np.nanmax([model[z,1] for model in new_models])
+        model_min[z] = np.nanmin([model[1,z] for model in new_models])
+        model_max[z] = np.nanmax([model[1,z] for model in new_models])
 
     np.savetxt('%s/mean_model.txt' % outdir, np.vstack([z_axis, model_moy]))
     np.savetxt('%s/min_models.txt' % outdir, np.vstack([z_axis, model_min]))
     np.savetxt('%s/max_models.txt' % outdir, np.vstack([z_axis, model_max]))
-
 
 
     # Uncertainty figure chowing limit for models chosen
