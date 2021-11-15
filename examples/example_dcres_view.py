@@ -122,32 +122,34 @@ if __name__ == "__main__":
     model_min = np.loadtxt('%s/min_models.txt' % outdir, unpack=True)
     model_max = np.loadtxt('%s/max_models.txt' % outdir, unpack=True)
 
+    #Import best model
+    best_model = pickle.load(open("%s/best_model_rms.pickle" % outdir, "rb"))
+    n = int(len(best_model) / 3)
+    bestVs_ax = []
+    for i in range(n):
+        bestVs_ax.extend([best_model[i], best_model[i]])
+    bestThickness_ax = []
+    thickness = 0
+    for i in range(n):
+        bestThickness_ax.extend([thickness, thickness+best_model[n+i]])
+        thickness = thickness+best_model[n+i]
+
     # Import data dispersion curves
     if "rayleigh" in wtypes:
-        Real_Rayleigh, Model_Rayleigh = [], []
+        Real_Rayleigh =  []
         for filename in sorted(r_filenames):
             data_rayleigh = np.loadtxt(open(("%s/%s" % (data_dir,filename)), "rb"), unpack=True)
             if (dtype == 'group') & ('group' not in filename):
                 data_rayleigh[1] = to_group_velocity(data_rayleigh[1], data_rayleigh[0])
             Real_Rayleigh.append(data_rayleigh)
-        for filename in sorted(glob.glob("%s/rayleigh_bestDC_mode*.txt" % outdir)):
-            data_rayleigh = np.loadtxt(open(filename, "rb"), unpack=True)
-            if (dtype == 'group') & ('group' not in filename):
-                data_rayleigh[1] = to_group_velocity(data_rayleigh[1], data_rayleigh[0])
-            Model_Rayleigh.append(data_rayleigh) #This is best model dispersion curves saved above
 
     if "love" in wtypes:
-        Real_Love, Model_Love = [], []
+        Real_Love = []
         for filename in sorted(l_filenames):
             data_love = np.loadtxt(open(("%s/%s" % (data_dir,filename)), "rb"), unpack=True)
             if (dtype == 'group') & ('group' not in filename):
                 data_love[1] = to_group_velocity(data_love[1], data_love[0])
             Real_Love.append(data_love)
-        for filename in sorted(glob.glob("%s/love_bestDC_mode*.txt" % outdir)):
-            data_love = np.loadtxt(open(filename, "rb"), unpack=True)
-            if (dtype == 'group') & ('group' not in filename):
-                data_love[1] = to_group_velocity(data_love[1], data_love[0])
-            Model_Love.append(data_love)
 
 
     # Initialize figures
@@ -198,10 +200,11 @@ if __name__ == "__main__":
     cb1 = fig1.colorbar(smap)
     cb1.set_label("apost", fontsize=12)
 
-    # Figure 1 bis: models only mean, max, min and true model represented
+    # Figure 1 bis: models only mean, max, min, best and true model represented
     ax1_bis.plot(trueVs_ax, trueThickness_ax, color='red', label='true model')
     ax1_bis.plot(model_moy[:, 1], model_moy[:, 0], color='magenta', label='mean model')
-    ax1_bis.fill_betweenx(model_min[:, 0], model_min[:, 1], model_max[:, 1], alpha=0.2, label='range of model')
+    ax1_bis.plot(bestVs_ax,bestThickness_ax, color='blue', label='best model')
+    ax1_bis.fill_betweenx(model_min[:, 0], model_min[:, 1], model_max[:, 1], alpha=0.2, label='range of models')
     ax1_bis.legend()
     ax1_bis.set_xlabel("Velocity (m/s)", fontsize=12)
     ax1_bis.set_ylabel("Depth (m)", fontsize=12)

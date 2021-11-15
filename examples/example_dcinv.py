@@ -87,7 +87,7 @@ if __name__ == "__main__":
         dcurves.append(dc)
 
     # Evolutionary optimizer parameters
-    evo_kws = dict(popsize=10, max_iter=100, constrain=True, mpi=mpi_exist) #, random_state=1 to test same invertion on several runs
+    evo_kws = dict(popsize=20, max_iter=200, constrain=True, mpi=mpi_exist) #, random_state=1 to test same invertion on several runs
     opt_kws = dict(solver="cpso")
 
     # Multiple inversions
