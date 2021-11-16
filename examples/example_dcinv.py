@@ -45,8 +45,8 @@ if __name__ == "__main__":
     # Parameters
     ny = 200                        # Number of velocity discretization points
     max_run = 10                    # Number of runs
-    popsize = 10
-    max_iter = 100
+    popsize = 20
+    max_iter = 200
     outdir = "output/" + output_name             # Output directory
 
     # Inversion boundaries
@@ -87,11 +87,15 @@ if __name__ == "__main__":
         dcurves.append(dc)
 
     # Evolutionary optimizer parameters
-    evo_kws = dict(popsize=20, max_iter=200, constrain=True, mpi=mpi_exist) #, random_state=1 to test same invertion on several runs
+    evo_kws = dict(popsize=popsize, max_iter=max_iter, constrain=True, mpi=mpi_exist) #, random_state=1 to test same invertion on several runs
     opt_kws = dict(solver="cpso")
 
     # Multiple inversions
     if mpi_rank == 0:
+        print("Run with population size = %i" % popsize)
+        print("Maximum iteration = %i" % max_iter)
+        print("Number of runs = %i" % max_run)
+        print("Wave type of the data = %i" % dtype)
         starttime = time.time()
         os.makedirs(outdir, exist_ok=True)
         progress(-1, max_run, "perc", prefix="Inverting dispersion curves: ")

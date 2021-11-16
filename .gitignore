@@ -11,6 +11,8 @@ PKG-INFO
 requires.txt
 SOURCES.txt
 top_level.txt
+qsub_mpi_dcinv.sh
+qsub_mpi_fast_dcinv.sh
 qsub_mpi_dcinv.sh.e*
 qsub_mpi_dcinv.sh.o*
 qsub_mpi_fast_dcinv.sh.e*
