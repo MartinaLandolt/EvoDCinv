@@ -171,8 +171,7 @@ class LayeredModel:
                     count += dcurve.npts
                 else:
                     misfit += np.Inf
-                    #break
-                    continue
+                    break
         if count != 0:
             return np.sqrt(misfit / count)
         else:
