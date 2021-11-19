@@ -216,67 +216,6 @@ if __name__ == "__main__":
     energy = energy[idx]
     apost = apost[idx]
 
-    # Keep good fitting models only : choose models with dispersion curves freq min >= freq min from data
-    # Recompute dispersion curves
-    lay = np.array([params2lay(m) for m in models])
-    #    lay = lay[200:210,:,:]
-
-    rcurves = []
-    lcurves = []
-    i = 0
-    idx = np.empty(0, dtype=int)
-    number_rejection = 0
-    for l in lay:
-        if i % 500 == 0:
-            print("Dispersion curve calculation : model ", i, " out of ", len(lay))
-        i = i + 1
-        f_criteria = True
-        flag_empty_mode = 0
-        if "rayleigh" in wtypes:
-            th = ThomsonHaskell(l, wtype="rayleigh")
-            th.propagate(f, ny=ny, domain="fc", n_threads=args.num_threads)
-            dc_calculated_r = th.pick(modes=ind_ray)
-            for dcurve in dc_calculated_r:
-                if len(dcurve.faxis) < 2:
-                    flag_empty_mode = 1
-                if (dtype == "group") & (flag_empty_mode == 0):
-                    dcurve.dtype = dtype
-                data = Real_Rayleigh[dcurve.mode]
-                if dcurve.faxis[0] >= data[0,0]:
-                    f_criteria = False
-        if "love" in wtypes:
-            th = ThomsonHaskell(l, wtype="love")
-            th.propagate(f, ny=ny, domain="fc", n_threads=args.num_threads)
-            dc_calculated_l = th.pick(modes=ind_love)
-            for dcurve in dc_calculated_l:
-                if len(dcurve.faxis) < 2:
-                    flag_empty_mode = 1
-                if (dtype == "group") & (flag_empty_mode == 0):
-                    dcurve.dtype = dtype
-                data = Real_Love[dcurve.mode]
-                if dcurve.faxis[0] >= data[0,0]:
-                    f_criteria = False
-
-        if (f_criteria == True) & (flag_empty_mode == 0):
-            rcurves.append(dc_calculated_r)
-            lcurves.append(dc_calculated_l)
-            idx = np.hstack([idx, i])
-        else:
-            number_rejection = number_rejection + 1
-    if "rayleigh" in wtypes:
-        pickle.dump(rcurves, open("%s/rcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
-    if "love" in wtypes:
-        pickle.dump(lcurves, open("%s/lcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
-
-    models = models[idx]
-    energy = energy[idx]
-    apost = apost[idx]
-
-    # Keep good fitting models only : save models
-    idx = np.argsort(energy)[::-1]
-    models = models[idx]
-    energy = energy[idx]
-    apost = apost[idx]
     pickle.dump(models, open("%s/models.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
     pickle.dump(energy, open("%s/energy.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -366,49 +305,51 @@ if __name__ == "__main__":
     fig2.tight_layout()
     fig2.savefig('%s/working.png' % figdir)
 
-    # if "rayleigh" in wtypes:
-    #     rcurves = []
-    #     i = 0
-    #     for l in lay:
-    #         if i % 500 == 0:
-    #             print("Rayleigh wave calculation : model ", i, " out of ", len(lay))
-    #         i = i + 1
-    #         # if i==462:
-    #         #     print("error faxis=8,4 dosen't exist")
-    #         th = ThomsonHaskell(l, wtype="rayleigh")
-    #         th.propagate(f, ny=ny, domain="fc", n_threads=args.num_threads)
-    #         dc_calculated = th.pick(modes=ind_ray)
-    #         if dtype == "group":
-    #             for dcurve in dc_calculated:
-    #                 dcurve.dtype = dtype
-    #         rcurves.append(dc_calculated)
-    #     pickle.dump(rcurves, open("%s/rcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
-    #
-    # if "love" in wtypes:
-    #     i = 0
-    #     lcurves = []
-    #     for l in lay:
-    #         flag_empty_mode = 0
-    #         if i % 500 == 0:
-    #             print("Love wave calculation : model ", i, " out of ", len(lay))
-    #         i = i + 1
-    #         th = ThomsonHaskell(l, wtype="love")
-    #         th.propagate(f, ny=ny, domain="fc", n_threads=args.num_threads)
-    #         dc_calculated = th.pick(modes=ind_love)
-    #         for dcurve in dc_calculated:
-    #             if len(dcurve.faxis) < 2:
-    #                 flag_empty_mode = 1
-    #         if flag_empty_mode == 0:
-    #             if dtype == "group":
-    #                 for dcurve in dc_calculated:
-    #                     dcurve.dtype = dtype
-    #             lcurves.append(dc_calculated)
-    #     pickle.dump(lcurves, open("%s/lcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
-    #
-    # if "rayleigh" in wtypes:
-    #     pickle.dump(rcurves, open("%s/rcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
-    # if "love" in wtypes:
-    #     pickle.dump(lcurves, open("%s/lcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
+    # Recompute dispersion curves
+    lay = np.array([params2lay(m) for m in models])
+    if "rayleigh" in wtypes:
+        rcurves = []
+        i = 0
+        for l in lay:
+            if i % 500 == 0:
+                print("Rayleigh wave calculation : model ", i, " out of ", len(lay))
+            i = i + 1
+            # if i==462:
+            #     print("error faxis=8,4 dosen't exist")
+            th = ThomsonHaskell(l, wtype="rayleigh")
+            th.propagate(f, ny=ny, domain="fc", n_threads=args.num_threads)
+            dc_calculated = th.pick(modes=ind_ray)
+            if dtype == "group":
+                for dcurve in dc_calculated:
+                    dcurve.dtype = dtype
+            rcurves.append(dc_calculated)
+        pickle.dump(rcurves, open("%s/rcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
+
+    if "love" in wtypes:
+        i = 0
+        lcurves = []
+        for l in lay:
+            flag_empty_mode = 0
+            if i % 500 == 0:
+                print("Love wave calculation : model ", i, " out of ", len(lay))
+            i = i + 1
+            th = ThomsonHaskell(l, wtype="love")
+            th.propagate(f, ny=ny, domain="fc", n_threads=args.num_threads)
+            dc_calculated = th.pick(modes=ind_love)
+            for dcurve in dc_calculated:
+                if len(dcurve.faxis) < 2:
+                    flag_empty_mode = 1
+            if flag_empty_mode == 0:
+                if dtype == "group":
+                    for dcurve in dc_calculated:
+                        dcurve.dtype = dtype
+                lcurves.append(dc_calculated)
+        pickle.dump(lcurves, open("%s/lcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
+
+    if "rayleigh" in wtypes:
+        pickle.dump(rcurves, open("%s/rcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
+    if "love" in wtypes:
+        pickle.dump(lcurves, open("%s/lcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
 
 
     # Print output statistics
