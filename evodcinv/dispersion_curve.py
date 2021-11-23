@@ -90,8 +90,9 @@ class DispersionCurve:
         with h5py.File(h5_path, 'r') as fin:
             freq = fin["Frequency"][:]
             vel = fin["DispersionCurve"][coordinates[0], coordinates[1], :]
+            uncertainties = fin["Uncertainties"][coordinates[0], coordinates[1], :]
 
-        return cls(vel, freq, mode, wtype, dtype)
+        return cls(vel, freq, mode, uncertainties, wtype, dtype)
 
             
     def save(self, filename = None, fmt = "%.8f"):

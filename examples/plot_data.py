@@ -26,9 +26,9 @@ def to_group_velocity(phase_velocity,faxis):
 
 if __name__ == "__main__":
 
-    dtype = 'phase'
-    data_dir = 'data'
-    outdir = "output/" + 'plot_data'  # Output directory
+    dtype = 'group' #'phase'
+    data_dir = 'data/groupV_model'
+    outdir = "output/" + 'plot_synthetic_data_group'  # Output directory
     if not os.path.exists(outdir):
         os.makedirs(outdir)
     figdir = outdir + "/figures"  # Output figures directory
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     for i in range(len(trueVs)):
         trueThickness_ax.extend([thickness, thickness+trueThickness[i]])
         thickness = thickness+trueThickness[i]
-    ax1.plot(trueVs_ax, trueThickness_ax, color='red', label='true model')
+    ax1.plot(trueVs_ax, trueThickness_ax, color='blue', label='true model')
     ax1.set_xlabel("Velocity (m/s)", fontsize=12)
     ax1.set_ylabel("Depth (m)", fontsize=12)
     ax1.set_ylim(0, 1500)
@@ -124,9 +124,11 @@ if __name__ == "__main__":
         for mode in ind_ray:
             for freq, v, inc in zip(Real_Rayleigh[mode][0], Real_Rayleigh[mode][1], Real_Rayleigh[mode][2]):
                 ax.errorbar(freq, v, yerr=inc, fmt="o", ecolor="blue", capsize=1.5, mfc='k', mec='k', ms=3, mew=0.3, zorder=10, alpha=0.5)
+            ax.plot(Real_Rayleigh[mode][0], Real_Rayleigh[mode][1], label='mode %i' %mode)
         ax.set_title("Rayleigh-wave")
         ax.set_xlabel("Frequency (Hz)", fontsize=12)
-        ax.set_ylabel("Phase velocity (m/s)", fontsize=12)
+        ax.set_ylabel("%s velocity (m/s)" %dtype, fontsize=12)
+        ax.legend()
         ax.set_xlim(fmin, fmax)
         ax.grid(True, linestyle=":")
 
@@ -135,9 +137,11 @@ if __name__ == "__main__":
         for mode in ind_love:
             for freq, v, inc in zip(Real_Love[mode][0], Real_Love[mode][1], Real_Love[mode][2]):
                 ax.errorbar(freq, v, yerr=inc, fmt="o", ecolor="blue", capsize=1.5, mfc='k', mec='k', ms=3, mew=0.3, zorder=10, alpha=0.5)
+            ax.plot(Real_Love[mode][0], Real_Love[mode][1], label='mode %i' % mode)
         ax.set_title("Love-wave")
         ax.set_xlabel("Frequency (Hz)", fontsize=12)
-        ax.set_ylabel("Phase velocity (m/s)", fontsize=12)
+        ax.set_ylabel("%s velocity (m/s)" %dtype, fontsize=12)
+        ax.legend()
         ax.set_xlim(fmin, fmax)
         ax.grid(True, linestyle=":")
 
