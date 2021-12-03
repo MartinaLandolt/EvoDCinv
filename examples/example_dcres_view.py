@@ -284,7 +284,7 @@ if __name__ == "__main__":
                 dcurve.plot(axes=ax, plt_kws=dict(color=smap.to_rgba(e)))
         for mode in ind_love:
             for freq, v, inc in zip(Real_Love[mode][0], Real_Love[mode][1], Real_Love[mode][2]):
-                ax.errorbar(freq, v, yerr=inc, fmt="o", ecolor="gray", capsize=1.5, mfc='k', mec='k', ms=3, mew=0.3, zorder=10, alpha=0.5)
+                ax.errorbar(freq, v, yerr=inc, fmt="o", ecolor="gray", capsize=1.5, mfc='r', mec='r', ms=3, mew=0.3, zorder=10, alpha=0.5)
         # for filename in sorted(l_filenames):
         #     L = np.loadtxt(open(("%s/%s" % (data_dir,filename)), "rb"), unpack=True)
         #     ax.errorbar(L[0], L[1], yerr=L[2], fmt="o", ecolor="blue", capsize=1.5, mfc='k', mec='k', ms=3, mew=1,
