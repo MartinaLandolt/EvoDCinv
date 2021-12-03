@@ -34,3 +34,4 @@ examples/test_sub
 *.png
 output/
 make_synthetics/synthetics_chemery
+make_synthetics/model_chemery
