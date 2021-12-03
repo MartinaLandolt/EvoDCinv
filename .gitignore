@@ -1,6 +1,8 @@
 # Byte-compiled  optimized  DLL files
 __pycache__/
 *.pyc
+make_synthetics/__pycache__
+
 
 # C extensions
 *.so
@@ -22,6 +24,7 @@ qsub_mpi_fast_dcinv.sh.o*
 logfiles/
 build/
 .idea/
+make_synthetics/.idea
 
 # PBS related files
 examples/test.sh
@@ -30,3 +33,4 @@ examples/test_sub
 # Test results
 *.png
 output/
+make_synthetics/synthetics_chemery

@@ -1,0 +1,4 @@
+from os import path
+cur_dir = path.dirname(__file__)
+data_format_1 = path.join(cur_dir, 'model_chemery')
+path_out_format_1 = path.join(cur_dir, 'synthetics_chemery')
