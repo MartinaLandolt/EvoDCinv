@@ -4,6 +4,7 @@ from pathlib import Path
 import glob
 import pandas as pd
 import numpy as np
+from scipy.interpolate import griddata
 
 
 def read_model_fmt1(path_model, nb_interfaces):
@@ -67,11 +68,13 @@ def read_model_fmt1(path_model, nb_interfaces):
         df_thickness_global[col_thick] = z_i - z_i_minus_1
 
     # keep only common (X,Y) between thickness and velocity
-    columns_thickness = list(df_velocity_global)
+    columns_thickness = list(df_thickness_global)
     df_thickness_global_merge = pd.merge(df_velocity_global, df_thickness_global, how='inner', on=['X', 'Y'])
-    df_velocity_global = df_velocity_global[columns_thickness ]
+    df_interfaces_global_merge = pd.merge(df_velocity_global, df_interfaces_global, how='inner', on=['X', 'Y'])
+    df_thickness_global = df_thickness_global_merge[columns_thickness]
+    df_interfaces_global = df_interfaces_global_merge[columns_interfaces]
 
-    return df_velocity_global, df_thickness_global
+    return df_velocity_global, df_thickness_global, df_interfaces_global
 
 
 def get_interface_number_fmt1(path_model):
@@ -124,6 +127,24 @@ def reorder_interfaces_by_depth(interface_list, interface_order):
     return interface_list
 
 
+def interpolate_model_per_layer(df_in):
+    """ 2D interpolation of NaN values in each horizon independently.
+    The first 2 columns of df_in should be X and Y, followed by a column per horizon"""
+    df_out = df_in.copy()
+    cols = list(df_out)
+    x_all = df_out[['X']].values[:,0]
+    y_all = df_out[['Y']].values[:,0]
+    for (i, col_i) in enumerate(cols[2:]):
+        j=i+2
+        vals_j = df_out[col_i].values
+        x_good = x_all[~np.isnan(vals_j)]
+        y_good = y_all[~np.isnan(vals_j)]
+        vals_good = vals_j[~np.isnan(vals_j)]
+        vals_all = griddata((x_good, y_good), vals_good, (x_all, y_all))
+        df_out[col_i] = vals_all
+    return df_out
+
+
 def make_1d_model_for_cell():
     pass
 
@@ -132,7 +153,8 @@ def get_dispersion_curve():
     pass
 
 
-def loop_on_cells():
+def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio=2):
+
     # make_1d_model_for_cell():
 
     # get_dispersion_curve()
@@ -161,9 +183,21 @@ if __name__ == '__main__':
     else:
         raise Exception("User-fixed layer number not yet supported. Number of layers should be auto")
 
-    df_velocity_global, df_thickness_global = \
+    # read model
+    df_velocity_global, df_thickness_global, df_interfaces_global = \
         read_model_fmt1(path_model_in, n_interfaces)
 
-    # loop_on_cells
+    # select only points where all the horizons are well defined
+    df_interfaces_valid = df_interfaces_global[~df_interfaces_global.isnull().any(axis=1)]
+    df_thickness_valid = df_thickness_global[~df_interfaces_global.isnull().any(axis=1)]
+    df_velocity_valid = df_velocity_global[~df_interfaces_global.isnull().any(axis=1)]
+
+    # fill points where velocity is lacking
+    df_velocity_interp = interpolate_model_per_layer(df_velocity_valid)
+
+    # select only points where all values are well defined
+    df_interfaces_valid = df_interfaces_valid[~df_velocity_interp.isnull().any(axis=1)]
+    df_thickness_valid = df_thickness_valid[~df_velocity_interp.isnull().any(axis=1)]
+    df_velocity_valid = df_velocity_interp[~df_velocity_interp.isnull().any(axis=1)]
 
 
