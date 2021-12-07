@@ -28,6 +28,9 @@ config.read(settings_path)
 path_paths = config["PATHS"]
 type_vel_model = int(path_paths["type_vel_model"])
 
+path_vel = config["VELOCITY_MODEL"]
+vp_over_vs = int(path_vel["vp_over_vs"])
+
 path_f_band = config["FREQUENCY_BAND"]
 f_step = float(path_f_band["BinFrequencyEvery"])
 f_start =float(path_f_band["FirstBin"])
@@ -40,4 +43,4 @@ modes = ast.literal_eval(path_w_type["modes"])
 
 path_solver_params = config["SOLVER_PARAMS"]
 n_layers = str(path_solver_params["n_layers"])
-ny = str(path_solver_params["ny"])
+ny = int(path_solver_params["ny"])

@@ -5,6 +5,7 @@ import glob
 import pandas as pd
 import numpy as np
 from scipy.interpolate import griddata
+from evodcinv import LayeredModel, ThomsonHaskell, params2lay
 
 
 def read_model_fmt1(path_model, nb_interfaces):
@@ -145,19 +146,57 @@ def interpolate_model_per_layer(df_in):
     return df_out
 
 
-def make_1d_model_for_cell():
-    pass
+def make_1d_model_for_cell(thickness_array_in, vp_array_in, last_layer_vel=6000, last_layer_thickness=99999.):
+    thickness_array_out = np.hstack((thickness_array_in[thickness_array_in > 10], last_layer_thickness))
+    vp_array_out = np.hstack((vp_array_in[thickness_array_in > 10], last_layer_vel))
+    if max(vp_array_out) <= 0:
+        raise Exception('Encountered non-strictly positive velocity after removing zero-thickness layers')
+    return thickness_array_out, vp_array_out
 
 
-def get_dispersion_curve():
-    pass
+def convert_1d_model_to_th_format(vp_array, thickness_array,
+                           vp_over_vs_ratio=2):
+    nb_layers = len(vp_array)
+    # create model in single line
+    m = np.nan*np.zeros(nb_layers*3)
+    m[0 : nb_layers] = 1/vp_over_vs_ratio * vp_array
+    m[nb_layers : 2*nb_layers] = thickness_array
+    m[2*nb_layers : 3*nb_layers] = vp_over_vs_ratio
+    # convert to model usable with Thomson-Haskell
+    l = params2lay(m)
+
+    return l
 
 
-def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio=2):
+def get_dispersion_curve(l, f_axis, ny, modes, wavetype, velocity_mode):
+    th = ThomsonHaskell(l, wtype=wavetype)
+    th.propagate(f_axis, ny=ny, domain="fc", n_threads=1)
+    dc_calculated = th.pick(modes=modes)
+    if velocity_mode == "group":
+        for dcurve in dc_calculated:
+            dcurve.dtype = velocity_mode
+    return dc_calculated
 
-    # make_1d_model_for_cell():
 
-    # get_dispersion_curve()
+def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
+                  fmin, fmax, nb_f, wavetype, modes, velocity_mode, ny):
+
+    # set common frequency axis
+    f = np.linspace(fmin, fmax, nb_f)
+
+    for (i, df_velocity_cell), (j, df_thickness_cell) in zip(df_velocity_global.iterrows(),
+                                                                  df_thickness_global.iterrows()):
+        thickness_array = df_thickness_cell.iloc[2:].values
+        velocity_array = df_velocity_cell.iloc[2:].values
+        thickness_array_clean, velocity_array_clean = \
+            make_1d_model_for_cell(thickness_array, velocity_array)
+        l = convert_1d_model_to_th_format(velocity_array_clean, thickness_array_clean,
+                                          vp_over_vs_ratio=vp_over_vs_ratio)
+        try:
+            dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
+        except:
+            dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
+        print('cell ', i, ' out of ', len(df_velocity_global))
 
     # save_h5()
     pass
@@ -199,5 +238,12 @@ if __name__ == '__main__':
     df_interfaces_valid = df_interfaces_valid[~df_velocity_interp.isnull().any(axis=1)]
     df_thickness_valid = df_thickness_valid[~df_velocity_interp.isnull().any(axis=1)]
     df_velocity_valid = df_velocity_interp[~df_velocity_interp.isnull().any(axis=1)]
+
+    # compute dispersion curves
+    nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
+    loop_on_cells(df_velocity_valid, df_thickness_valid, settings_synthetics.vp_over_vs,
+                  settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
+                  settings_synthetics.wavetype, settings_synthetics.modes,
+                  settings_synthetics.velocity_mode, settings_synthetics.ny)
 
 

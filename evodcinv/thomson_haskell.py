@@ -146,8 +146,8 @@ class ThomsonHaskell:
 
         n_mode = 0
         for i, f in enumerate(self._faxis):
-            tmp = self._panel[:,i] / np.abs(self._panel[:,i]).max()
-            idx = np.where((tmp[:-1] * tmp[1:]) < 0.)[0]
+            tmp = self._panel[:,i] / np.abs(np.nanmax(self._panel[:,i]))
+            idx = np.where((np.sign(tmp[:-1]) * np.sign(tmp[1:])) < 0.)[0]
             n_mode_new = len(idx)
             if n_mode_new >= n_mode:
                 n_mode = n_mode_new
