@@ -6,6 +6,48 @@ import pandas as pd
 import numpy as np
 from scipy.interpolate import griddata
 from evodcinv import LayeredModel, ThomsonHaskell, params2lay
+import pyproj
+from pyproj import CRS
+from pyproj import Transformer
+
+
+def remove_first_digit(x):
+    """in order to remove the front "2" digit in Lambert II Y coordinate"""
+    str_x = str(x)
+    str_x_new = str_x[1:]
+    x_out = float(str_x_new)
+    return x_out
+
+
+def convert_coordinates(x_in, y_in, espg_in=27562, espg_out=3043):
+    """
+    27562 is Lambert 2 (central France)
+    3043 is UTM 31 N (Europe in general)
+    """
+    crs1 = CRS.from_epsg(espg_out)
+    crs2 = CRS.from_epsg(espg_in)
+    transformer = Transformer.from_crs(crs2, crs1)
+    x_out, y_out = transformer.transform(x_in, y_in)
+    return x_out, y_out
+
+
+def process_df_coordinates(df_in):
+    """ convert df_in fields X and Y to UTM 31N, from Lambert 2 as in most Storengy files """
+
+    df_out = df_in.copy()
+
+    # remove the front "2" digit in the Lambert II Y coordinate (Storengy specificity)
+    y = df_out['Y'].values
+    x = df_out['X'].values
+    y_clean = y
+    for (i, y_i) in enumerate(y):
+        y_clean[i] = remove_first_digit(y_i)
+
+    # convert to UTM
+    x_UTM, y_UTM = convert_coordinates(x, y_clean, espg_in=27562, espg_out=3043)
+    df_out['X'] = x_UTM
+    df_out['Y'] = y_UTM
+    return df_out
 
 
 def read_model_fmt1(path_model, nb_interfaces):
@@ -29,6 +71,7 @@ def read_model_fmt1(path_model, nb_interfaces):
     # read all interfaces
     for (i, interface_file_i) in enumerate(interface_file_list):
         df_interface_i = pd.read_csv(path_model_depth.joinpath(interface_file_i))
+        df_interface_i = process_df_coordinates(df_interface_i)
         vals_i= df_interface_i.iloc[:, -1].values
         df_interface_i.iloc[:, -1].values[vals_i == -9999.] = np.nan
         interface_list.append(df_interface_i)
@@ -37,6 +80,7 @@ def read_model_fmt1(path_model, nb_interfaces):
     # read all velocities
     for (i, velocity_file_i) in enumerate(velocity_file_list):
         df_velocity_i = pd.read_csv(path_model_vel.joinpath(velocity_file_i))
+        df_velocity_i = process_df_coordinates(df_velocity_i)
         vals_i= df_velocity_i.iloc[:, -1].values
         df_velocity_i.iloc[:, -1].values[vals_i == -9999.] = np.nan
         velocity_list.append(df_velocity_i)
@@ -128,7 +172,7 @@ def reorder_interfaces_by_depth(interface_list, interface_order):
     return interface_list
 
 
-def interpolate_model_per_layer(df_in):
+def interpolate_model_per_layer(df_in, xmin=None, xmax=None, ymin=None, ymax=None, dx=None, dy=None):
     """ 2D interpolation of NaN values in each horizon independently.
     The first 2 columns of df_in should be X and Y, followed by a column per horizon"""
     df_out = df_in.copy()
@@ -184,6 +228,15 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
     # set common frequency axis
     f = np.linspace(fmin, fmax, nb_f)
 
+    # initialize dict with an array n_cells x n_f for dispersion curves per mode
+    dispersion_dict = dict()
+    dispersion_dict['wavetype'] = wavetype
+    dispersion_dict['velocity_mode'] = velocity_mode
+    dispersion_dict['f_axis'] = f
+    for mode in modes:
+        dispersion_dict["".join(['mode_', str(mode)])] = np.nan * np.zeros((len(df_velocity_global), nb_f))
+
+    cell_count = 0
     for (i, df_velocity_cell), (j, df_thickness_cell) in zip(df_velocity_global.iterrows(),
                                                                   df_thickness_global.iterrows()):
         thickness_array = df_thickness_cell.iloc[2:].values
@@ -196,13 +249,30 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
             dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
         except:
             dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
-        print('cell ', i, ' out of ', len(df_velocity_global))
 
-    # save_h5()
-    pass
+        # write in the array
+        for mode in modes:
+            vel_vals = getattr(dc_calculated[mode], "".join([velocity_mode, "_velocity"]))
+            f_vals = getattr(dc_calculated[mode], 'faxis')
+            i_f = [i for (i, x) in enumerate(f) if (x in f_vals)]
+            try:
+                dispersion_dict["".join(['mode_', str(mode)])][cell_count, i_f] = vel_vals
+            except:
+                print('debug')
+
+        cell_count += 1
+        print('cell ', cell_count, ' out of ', len(df_velocity_global))
+
+    # save_h5() # separately for each mode
+    return dispersion_dict
 
 
 def save_h5():
+    # create a mesh from the data
+    # interpolate the dispersion curves on the mesh at each frequency
+    # create the MissingSamples
+    # create the uncertainties
+    # write to h5 file
     pass
 
 
@@ -241,7 +311,7 @@ if __name__ == '__main__':
 
     # compute dispersion curves
     nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
-    loop_on_cells(df_velocity_valid, df_thickness_valid, settings_synthetics.vp_over_vs,
+    dispersion_dict = loop_on_cells(df_velocity_valid, df_thickness_valid, settings_synthetics.vp_over_vs,
                   settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
                   settings_synthetics.wavetype, settings_synthetics.modes,
                   settings_synthetics.velocity_mode, settings_synthetics.ny)
