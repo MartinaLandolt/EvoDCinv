@@ -94,6 +94,15 @@ class DispersionCurve:
 
         return cls(vel, freq, mode, uncertainties, wtype, dtype)
 
+    @classmethod
+    def from_h5_tmp(cls, h5_path, coordinates, mode, wtype="rayleigh", dtype="group"):
+        """to get one dispersion curve from a data.h5 file"""
+        with h5py.File(h5_path, 'r') as fin:
+            freq = fin["Frequency"][:]
+            vel = fin["DispersionCurve"][coordinates, :]
+            uncertainties = fin["Uncertainties"][coordinates, :]
+
+        return cls(vel, freq, mode, uncertainties, wtype, dtype)
             
     def save(self, filename = None, fmt = "%.8f"):
         """
@@ -165,18 +174,21 @@ class DispersionCurve:
         else:
             faxis = self.faxis
 
-        omega = 2*np.pi*faxis
-        domega = omega[1] - omega[0]
-        if not np.allclose(np.diff(omega), domega, rtol=10**-2):
-            raise ValueError("""Frequencies not evenly spaced. 
-                   Could not convert from phase velocity to group velocity""")
-        dphase_domega = np.gradient(phase_velocity, domega)
-        #group_velocity = phase_velocity  + omega * dphase_domega
-        group_velocity = phase_velocity / (1 - omega/phase_velocity * dphase_domega)
+        if len(faxis) >= 2 :
+            omega = 2*np.pi*faxis
+            domega = omega[1] - omega[0]
+            if not np.allclose(np.diff(omega), domega, rtol=10**-2):
+                raise ValueError("""Frequencies not evenly spaced. 
+                       Could not convert from phase velocity to group velocity""")
+            dphase_domega = np.gradient(phase_velocity, domega)
+            #group_velocity = phase_velocity  + omega * dphase_domega
+            group_velocity = phase_velocity / (1 - omega/phase_velocity * dphase_domega)
 
-        self.group_velocity = group_velocity
-        self.dtype = 'group'
-        self.dtype_velocity = group_velocity
+            self.group_velocity = group_velocity
+            self.dtype = 'group'
+            self.dtype_velocity = group_velocity
+        else :
+            raise ValueError("""dipersion curve to small (empty or only one value) to convert to groupe velocity""")
 
     @property
     def dtype_velocity(self):
