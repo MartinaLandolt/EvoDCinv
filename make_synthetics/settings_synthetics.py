@@ -30,6 +30,13 @@ type_vel_model = int(path_paths["type_vel_model"])
 
 path_vel = config["VELOCITY_MODEL"]
 vp_over_vs = int(path_vel["vp_over_vs"])
+bounds_mode = str(path_vel["bounds_mode"])
+xmin = float(path_vel["xmin"])
+ymin = float(path_vel["ymin"])
+cell_size = float(path_vel["cell_size"])
+n_cells = int(path_vel["n_cells"])
+xmax = xmin + cell_size * n_cells
+ymax = ymin + cell_size * n_cells
 
 path_f_band = config["FREQUENCY_BAND"]
 f_step = float(path_f_band["BinFrequencyEvery"])

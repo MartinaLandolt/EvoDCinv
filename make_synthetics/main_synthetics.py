@@ -9,6 +9,7 @@ from evodcinv import LayeredModel, ThomsonHaskell, params2lay
 import pyproj
 from pyproj import CRS
 from pyproj import Transformer
+import h5py
 
 
 def remove_first_digit(x):
@@ -26,7 +27,7 @@ def convert_coordinates(x_in, y_in, espg_in=27562, espg_out=3043):
     """
     crs1 = CRS.from_epsg(espg_out)
     crs2 = CRS.from_epsg(espg_in)
-    transformer = Transformer.from_crs(crs2, crs1)
+    transformer = Transformer.from_crs(crs2, crs1, always_xy=True)
     x_out, y_out = transformer.transform(x_in, y_in)
     return x_out, y_out
 
@@ -172,20 +173,29 @@ def reorder_interfaces_by_depth(interface_list, interface_order):
     return interface_list
 
 
-def interpolate_model_per_layer(df_in, xmin=None, xmax=None, ymin=None, ymax=None, dx=None, dy=None):
+def interpolate_model_per_layer(df_in, xmin=None, xmax=None, ymin=None, ymax=None, n_cells=None):
     """ 2D interpolation of NaN values in each horizon independently.
     The first 2 columns of df_in should be X and Y, followed by a column per horizon"""
-    df_out = df_in.copy()
-    cols = list(df_out)
-    x_all = df_out[['X']].values[:,0]
-    y_all = df_out[['Y']].values[:,0]
+    df_out = pd.DataFrame()
+    cols = list(df_in)
+    x_in = df_in[['X']].values[:,0]
+    y_in = df_in[['Y']].values[:,0]
+
+    x_axis = np.linspace(xmin, xmax, n_cells)
+    y_axis = np.linspace(ymin, ymax, n_cells)
+    x_mesh, y_mesh = np.meshgrid(x_axis, y_axis)
+    x_out = x_mesh.flatten()
+    y_out = y_mesh.flatten()
+    df_out['X'] = x_out
+    df_out['Y'] = y_out
+
     for (i, col_i) in enumerate(cols[2:]):
         j=i+2
-        vals_j = df_out[col_i].values
-        x_good = x_all[~np.isnan(vals_j)]
-        y_good = y_all[~np.isnan(vals_j)]
+        vals_j = df_in[col_i].values
+        x_good = x_in[~np.isnan(vals_j)]
+        y_good = y_in[~np.isnan(vals_j)]
         vals_good = vals_j[~np.isnan(vals_j)]
-        vals_all = griddata((x_good, y_good), vals_good, (x_all, y_all))
+        vals_all = griddata((x_good, y_good), vals_good, (x_out, y_out))
         df_out[col_i] = vals_all
     return df_out
 
@@ -231,8 +241,11 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
     # initialize dict with an array n_cells x n_f for dispersion curves per mode
     dispersion_dict = dict()
     dispersion_dict['wavetype'] = wavetype
+    dispersion_dict['modes'] = modes
     dispersion_dict['velocity_mode'] = velocity_mode
     dispersion_dict['f_axis'] = f
+    dispersion_dict['X'] = df_velocity_global['X']
+    dispersion_dict['Y'] = df_velocity_global['Y']
     for mode in modes:
         dispersion_dict["".join(['mode_', str(mode)])] = np.nan * np.zeros((len(df_velocity_global), nb_f))
 
@@ -241,39 +254,73 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
                                                                   df_thickness_global.iterrows()):
         thickness_array = df_thickness_cell.iloc[2:].values
         velocity_array = df_velocity_cell.iloc[2:].values
-        thickness_array_clean, velocity_array_clean = \
-            make_1d_model_for_cell(thickness_array, velocity_array)
-        l = convert_1d_model_to_th_format(velocity_array_clean, thickness_array_clean,
-                                          vp_over_vs_ratio=vp_over_vs_ratio)
-        try:
-            dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
-        except:
-            dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
-
-        # write in the array
-        for mode in modes:
-            vel_vals = getattr(dc_calculated[mode], "".join([velocity_mode, "_velocity"]))
-            f_vals = getattr(dc_calculated[mode], 'faxis')
-            i_f = [i for (i, x) in enumerate(f) if (x in f_vals)]
+        if np.isnan(velocity_array).any():
+            for mode in modes:
+                dispersion_dict["".join(['mode_', str(mode)])][cell_count, :] = np.nan
+        else:
+            thickness_array_clean, velocity_array_clean = \
+                make_1d_model_for_cell(thickness_array, velocity_array)
+            l = convert_1d_model_to_th_format(velocity_array_clean, thickness_array_clean,
+                                              vp_over_vs_ratio=vp_over_vs_ratio)
             try:
-                dispersion_dict["".join(['mode_', str(mode)])][cell_count, i_f] = vel_vals
+                dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
             except:
-                print('debug')
+                dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
+
+            # write in the array
+            for mode in modes:
+                vel_vals = getattr(dc_calculated[mode], "".join([velocity_mode, "_velocity"]))
+                f_vals = getattr(dc_calculated[mode], 'faxis')
+                i_f = [i for (i, x) in enumerate(f) if (x in f_vals)]
+                try:
+                    dispersion_dict["".join(['mode_', str(mode)])][cell_count, i_f] = vel_vals
+                except:
+                    print('debug')
 
         cell_count += 1
         print('cell ', cell_count, ' out of ', len(df_velocity_global))
 
-    # save_h5() # separately for each mode
     return dispersion_dict
 
 
-def save_h5():
-    # create a mesh from the data
-    # interpolate the dispersion curves on the mesh at each frequency
-    # create the MissingSamples
-    # create the uncertainties
-    # write to h5 file
-    pass
+def save_h5(dispersion_dict, file_out):
+    # resize coordinates to mesh format
+    x_mesh = np.reshape(dispersion_dict['X'].values, (settings_synthetics.n_cells, settings_synthetics.n_cells))
+    y_mesh = np.reshape(dispersion_dict['Y'].values, (settings_synthetics.n_cells, settings_synthetics.n_cells))
+    dict_h5_list = []
+    for mode in dispersion_dict['modes']:
+        freq = dispersion_dict['f_axis']
+        dispersion_array = dispersion_dict["".join(['mode_', str(mode)])]
+        nan_test = np.sum(~np.isnan(dispersion_array), axis=1)
+        # create the MissingSamples
+        mask = (nan_test < 0.5*len(freq)).astype('int')
+        # create the uncertainties
+        vel_uncert = dispersion_array * 0.01
+        # resize
+        disp_curves = np.reshape(dispersion_array,
+                                 (settings_synthetics.n_cells, settings_synthetics.n_cells, len(freq)))
+        mask = np.reshape(mask, (settings_synthetics.n_cells, settings_synthetics.n_cells,))
+        vel_uncert = np.reshape(vel_uncert, (settings_synthetics.n_cells, settings_synthetics.n_cells, len(freq)))
+        # write to h5 file
+        file_out_mode = "".join([file_out, '_mode_', str(mode), '.h5'])
+        with h5py.File(file_out_mode, "w") as fout:
+            fout.create_dataset("Frequency", data=freq)
+            fout.create_dataset("DispersionCurve", data=disp_curves)
+            fout.create_dataset("Uncertainties", data=vel_uncert)
+            fout.create_dataset("MissingSamples", data=mask)
+            fout.create_dataset("X_coord", data=x_mesh)
+            fout.create_dataset("Y_coord", data=y_mesh)
+
+        dict_h5={'Frequency':freq,
+                'DispersionCurve':disp_curves,
+                'Uncertainties':vel_uncert,
+                'MissingSamples':mask,
+                'X_coord':x_mesh,
+                'Y_coord':y_mesh}
+
+        dict_h5_list.append(dict_h5)
+
+    return dict_h5_list
 
 
 if __name__ == '__main__':
@@ -301,19 +348,35 @@ if __name__ == '__main__':
     df_thickness_valid = df_thickness_global[~df_interfaces_global.isnull().any(axis=1)]
     df_velocity_valid = df_velocity_global[~df_interfaces_global.isnull().any(axis=1)]
 
-    # fill points where velocity is lacking
-    df_velocity_interp = interpolate_model_per_layer(df_velocity_valid)
+    # interpolate on desired grid
+    if settings_synthetics.bounds_mode=='auto':
+        xmin = df_velocity_valid['X'].min()
+        ymin = df_velocity_valid['Y'].min()
+        xmax = df_velocity_valid['X'].max()
+        ymax = df_velocity_valid['Y'].max()
+    elif settings_synthetics.bounds_mode=='manual':
+        xmin = settings_synthetics.xmin
+        ymin = settings_synthetics.ymin
+        xmax = settings_synthetics.xmax
+        ymax = settings_synthetics.ymax
+    else:
+        raise Exception('unknown bounds_mode value')
+    df_velocity_interp = interpolate_model_per_layer(df_velocity_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
+                                                     n_cells=settings_synthetics.n_cells)
+    df_thickness_interp = interpolate_model_per_layer(df_thickness_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
+                                                     n_cells=settings_synthetics.n_cells)
 
     # select only points where all values are well defined
-    df_interfaces_valid = df_interfaces_valid[~df_velocity_interp.isnull().any(axis=1)]
-    df_thickness_valid = df_thickness_valid[~df_velocity_interp.isnull().any(axis=1)]
-    df_velocity_valid = df_velocity_interp[~df_velocity_interp.isnull().any(axis=1)]
+    # df_interfaces_valid = df_interfaces_valid[~df_velocity_interp.isnull().any(axis=1)]
+    # df_thickness_valid = df_thickness_interp[~df_velocity_interp.isnull().any(axis=1)]
+    # df_velocity_valid = df_velocity_interp[~df_velocity_interp.isnull().any(axis=1)]
 
     # compute dispersion curves
     nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
-    dispersion_dict = loop_on_cells(df_velocity_valid, df_thickness_valid, settings_synthetics.vp_over_vs,
+    dispersion_dict = loop_on_cells(df_velocity_interp, df_thickness_interp, settings_synthetics.vp_over_vs,
                   settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
                   settings_synthetics.wavetype, settings_synthetics.modes,
                   settings_synthetics.velocity_mode, settings_synthetics.ny)
 
-
+    file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
+    dict_h5_list = save_h5(dispersion_dict, file_out)
