@@ -145,11 +145,38 @@ class ThomsonHaskell:
         faxis = [ [] for m in modes ]
 
         n_mode = 0
+        count_jump = 0
+        #rms0 = np.infty
+        rms0 = []
         for i, f in enumerate(self._faxis):
             tmp = self._panel[:,i] / np.abs(self._panel[:,i]).max()
+            tmp_non_nan = tmp[~np.isnan(tmp)]
+            sgn = np.sign(tmp_non_nan[-1])
             idx = np.where((tmp[:-1] * tmp[1:]) < 0.)[0]
+            if i == 0:
+                idx0 = idx
+                sgn0 = sgn
             n_mode_new = len(idx)
-            if n_mode_new >= n_mode:
+            if (n_mode_new > n_mode + count_jump) | ((sgn == sgn0) & (n_mode_new == n_mode + count_jump)):
+                #flag_good = True
+                # if (n_mode_new > 1) & (n_mode > 1):
+                    # idx_truncated = idx[:-1]
+                    # stop_index1 = min(len(modes)+1, len(idx0)-1, len(idx_truncated))
+                    # rms_index1 = np.sum((idx_truncated[:stop_index1] - idx0[:stop_index1]) ** 2) / stop_index1
+                    # rms_index2 = np.sum((idx_truncated[:stop_index1] - idx0[1:stop_index1 + 1]) ** 2) / stop_index1
+                    # # if rms0 == np.infty:
+                    # #     rms0 = max(100, rms_index1)
+                    # if len(rms0) == 0:
+                    #     rms0.append(max(5, rms_index1))
+                    # flag_good = (rms_index1 < rms_index2) & (rms_index1 / np.mean(rms0) < 10)
+                    # if flag_good:
+                    #     rms0.append(max(5, rms_index1))
+                    #     if len(rms0) > 5:
+                    #         rms0 = rms0[-5:]
+                #if flag_good:
+                count_jump = 0
+                idx0 = idx
+                sgn0 = sgn
                 n_mode = n_mode_new
                 for j, m in enumerate(modes):
                     if len(idx) >= m+1:
@@ -158,6 +185,10 @@ class ThomsonHaskell:
                         x = ( vr[0] * xr[1] - vr[1] * xr[0] ) / ( xr[1] - xr[0] )
                         dcurve[j].append(x)
                         faxis[j].append(f)
+            else:
+                if sgn != sgn0:
+                    count_jump += 1
+                print("debug")
         for j, m in enumerate(modes):
             if len(faxis[j]) > 0:
                 faxis_full = self._faxis[(self._faxis>=min(faxis[j])) & (self._faxis<=max(faxis[j]))]

@@ -183,10 +183,16 @@ class DispersionCurve:
             dphase_domega = np.gradient(phase_velocity, domega)
             #group_velocity = phase_velocity  + omega * dphase_domega
             group_velocity = phase_velocity / (1 - omega/phase_velocity * dphase_domega)
-
+            diff_vg = np.diff(group_velocity)
+            diff_vg = np.hstack((diff_vg, diff_vg[-1]))
+            flag_stop = np.max(np.abs(diff_vg[faxis > 1])) > 100
+            if flag_stop:
+                print('debug')
             self.group_velocity = group_velocity
             self.dtype = 'group'
             self.dtype_velocity = group_velocity
+            #REMOOOVE AFTER DEBUG
+            self.flag_stop = flag_stop
         else :
             raise ValueError("""dipersion curve to small (empty or only one value) to convert to groupe velocity""")
 
