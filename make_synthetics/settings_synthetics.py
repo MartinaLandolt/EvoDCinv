@@ -37,6 +37,8 @@ cell_size = float(path_vel["cell_size"])
 n_cells = int(path_vel["n_cells"])
 xmax = xmin + cell_size * n_cells
 ymax = ymin + cell_size * n_cells
+lateral_smooth = bool(path_vel["lateral_smooth"])
+smooth_length = float(path_vel["smooth_length"])
 
 path_f_band = config["FREQUENCY_BAND"]
 f_step = float(path_f_band["BinFrequencyEvery"])

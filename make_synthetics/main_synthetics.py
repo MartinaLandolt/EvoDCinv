@@ -10,6 +10,7 @@ import pyproj
 from pyproj import CRS
 from pyproj import Transformer
 import h5py
+from scipy.signal import medfilt2d
 
 
 def remove_first_digit(x):
@@ -72,6 +73,8 @@ def read_model_fmt1(path_model, nb_interfaces):
     # read all interfaces
     for (i, interface_file_i) in enumerate(interface_file_list):
         df_interface_i = pd.read_csv(path_model_depth.joinpath(interface_file_i))
+        if i==0:
+            dx_in, dy_in = find_grid_step(df_interface_i['X'].values, df_interface_i['Y'].values)
         df_interface_i = process_df_coordinates(df_interface_i)
         vals_i= df_interface_i.iloc[:, -1].values
         df_interface_i.iloc[:, -1].values[vals_i == -9999.] = np.nan
@@ -120,7 +123,7 @@ def read_model_fmt1(path_model, nb_interfaces):
     df_thickness_global = df_thickness_global_merge[columns_thickness]
     df_interfaces_global = df_interfaces_global_merge[columns_interfaces]
 
-    return df_velocity_global, df_thickness_global, df_interfaces_global
+    return df_velocity_global, df_thickness_global, df_interfaces_global, dx_in, dy_in
 
 
 def get_interface_number_fmt1(path_model):
@@ -136,6 +139,12 @@ def get_interface_number_fmt1(path_model):
     if nb_interfaces - nb_layers != 1:
         raise Exception("".join(['nb_interfaces - nb_layers should be 1, but found ', nb_interfaces - nb_layers]))
     return nb_interfaces, nb_layers
+
+
+def find_grid_step(x_in, y_in):
+    dx_in = np.nanmedian(np.diff(np.unique(x_in)))
+    dy_in = np.nanmedian(np.diff(np.unique(x_in)))
+    return dx_in, dy_in
 
 
 def check_velocity_column_name_consistency():
@@ -173,7 +182,8 @@ def reorder_interfaces_by_depth(interface_list, interface_order):
     return interface_list
 
 
-def interpolate_model_per_layer(df_in, xmin=None, xmax=None, ymin=None, ymax=None, n_cells=None):
+def interpolate_model_per_layer(df_in, xmin=None, xmax=None, ymin=None, ymax=None, n_cells=None,
+                               lateral_smooth=False, smooth_length=100, dx_in=None,  dy_in=None):
     """ 2D interpolation of NaN values in each horizon independently.
     The first 2 columns of df_in should be X and Y, followed by a column per horizon"""
     df_out = pd.DataFrame()
@@ -181,26 +191,54 @@ def interpolate_model_per_layer(df_in, xmin=None, xmax=None, ymin=None, ymax=Non
     x_in = df_in[['X']].values[:,0]
     y_in = df_in[['Y']].values[:,0]
 
+    if lateral_smooth:
+        if dx_in != dy_in:
+            raise Exception('smoothing not implemented for non-square cells')
+        n_smooth_kernel = int(np.ceil(smooth_length/dx_in))
+        if (n_smooth_kernel % 2) == 0:
+            n_smooth_kernel += 1 # ensure the number is odd (scipy median filter module requirement)
+        n_cells_y_in = int(np.ceil( (np.nanmax(y_in) - np.nanmin(y_in)) / dy_in))
+        n_cells_x_in = int(np.ceil( (np.nanmax(x_in) - np.nanmin(x_in)) / dx_in))
+        x_axis_in = np.linspace(np.nanmin(x_in), np.nanmax(x_in), n_cells_x_in)
+        y_axis_in = np.linspace(np.nanmin(y_in), np.nanmax(y_in), n_cells_y_in)
+        x_mesh_in, y_mesh_in = np.meshgrid(x_axis_in, y_axis_in)
+
     x_axis = np.linspace(xmin, xmax, n_cells)
     y_axis = np.linspace(ymin, ymax, n_cells)
     x_mesh, y_mesh = np.meshgrid(x_axis, y_axis)
+
     x_out = x_mesh.flatten()
     y_out = y_mesh.flatten()
     df_out['X'] = x_out
     df_out['Y'] = y_out
 
+    # for each layer
     for (i, col_i) in enumerate(cols[2:]):
         j=i+2
         vals_j = df_in[col_i].values
         x_good = x_in[~np.isnan(vals_j)]
         y_good = y_in[~np.isnan(vals_j)]
         vals_good = vals_j[~np.isnan(vals_j)]
+        # if smoothing necessary
+        if lateral_smooth:
+            # interpolate on grid_in
+            vals_tmp = griddata((x_good, y_good), vals_good, (x_mesh_in, y_mesh_in))
+            # smooth 2D
+            vals_tmp_smooth = medfilt2d(vals_tmp, n_smooth_kernel)
+            # update & flatten x_good, y_good, vals_good
+            x_good = x_mesh_in.flatten()
+            y_good = y_mesh_in.flatten()
+            vals_good = vals_tmp_smooth.flatten()
+            x_good = x_good[~np.isnan(vals_good)]
+            y_good = y_good[~np.isnan(vals_good)]
+            vals_good = vals_good[~np.isnan(vals_good)]
         vals_all = griddata((x_good, y_good), vals_good, (x_out, y_out))
         df_out[col_i] = vals_all
     return df_out
 
 
 def make_1d_model_for_cell(thickness_array_in, vp_array_in, last_layer_vel=6000, last_layer_thickness=99999.):
+    """ ignores layers thinner than 10 m """
     thickness_array_out = np.hstack((thickness_array_in[thickness_array_in > 10], last_layer_thickness))
     vp_array_out = np.hstack((vp_array_in[thickness_array_in > 10], last_layer_vel))
     if max(vp_array_out) <= 0:
@@ -340,7 +378,7 @@ if __name__ == '__main__':
         raise Exception("User-fixed layer number not yet supported. Number of layers should be auto")
 
     # read model
-    df_velocity_global, df_thickness_global, df_interfaces_global = \
+    df_velocity_global, df_thickness_global, df_interfaces_global, dx_in, dy_in = \
         read_model_fmt1(path_model_in, n_interfaces)
 
     # select only points where all the horizons are well defined
@@ -362,9 +400,15 @@ if __name__ == '__main__':
     else:
         raise Exception('unknown bounds_mode value')
     df_velocity_interp = interpolate_model_per_layer(df_velocity_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
-                                                     n_cells=settings_synthetics.n_cells)
+                                                     n_cells=settings_synthetics.n_cells,
+                                                     lateral_smooth=settings_synthetics.lateral_smooth,
+                                                     smooth_length=settings_synthetics.smooth_length,
+                                                     dx_in = dx_in, dy_in = dy_in)
     df_thickness_interp = interpolate_model_per_layer(df_thickness_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
-                                                     n_cells=settings_synthetics.n_cells)
+                                                     n_cells=settings_synthetics.n_cells,
+                                                     lateral_smooth=settings_synthetics.lateral_smooth,
+                                                     smooth_length=settings_synthetics.smooth_length,
+                                                     dx_in = dx_in, dy_in = dy_in)
 
     # select only points where all values are well defined
     # df_interfaces_valid = df_interfaces_valid[~df_velocity_interp.isnull().any(axis=1)]
