@@ -456,6 +456,88 @@ def save_model_plots(df_data, name_data, n_cells_x, n_cells_y, folder_out):
         plt.close(fig)
 
 
+def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cells_x, n_cells_y, folder_out,
+                             fixed_coord='x', coord_val=None, dz=5,
+                             z_margin_bottom=200, z_margin_top=20):
+
+    path_data = Path(folder_out).joinpath('cross_section_plots')
+    if not path_data.exists():
+        path_data.mkdir()
+
+    # compute nz
+    zmin = np.nanmin(df_interfaces.iloc[:, 2:].values) - z_margin_top
+    zmax = np.nanmax(df_interfaces.iloc[:, 2:].values) + z_margin_bottom
+    nz = int(np.ceil(zmax/dz))
+
+    # create z_axis
+    z_axis = np.linspace(zmin, zmax, nz)
+    x_axis = np.unique(df_interfaces['X'].values)
+    y_axis = np.unique(df_interfaces['Y'].values)
+
+    # initialize 2d slice
+    if fixed_coord == 'x':
+        n_cells = n_cells_y
+        i_cell = [i for i in range(len(x_axis)) if np.abs(x_axis[i] - coord_val) == min(np.abs(x_axis - coord_val))]
+        coord_axis = y_axis
+        str_xlabel = 'Y (km)'
+    elif fixed_coord == 'y':
+        n_cells = n_cells_x
+        i_cell = [i for i in range(len(y_axis)) if np.abs(y_axis[i] - coord_val) == min(np.abs(y_axis - coord_val))]
+        coord_axis = x_axis
+        str_xlabel = 'X (km)'
+    else:
+        raise Exception("".join(['unknown fixed coord: ', fixed_coord]))
+    slice_section = np.nan * np.zeros((nz, n_cells))
+
+    fig, ax = plt.subplots()
+    # find ground level
+    z_ground_level_all_vals = df_interfaces.iloc[:, 2].values
+    z_ground_level_reshape = np.reshape(z_ground_level_all_vals, (n_cells_y, n_cells_x))
+    if fixed_coord == 'x':
+        z_ground_level_slice = z_ground_level_reshape[:, i_cell]
+    else:
+        z_ground_level_slice = z_ground_level_reshape[i_cell, :]
+
+    # loop on velocities
+    cols = list(df_interfaces)
+    z_minus_1_slice = z_ground_level_slice
+    for (i, col_i) in enumerate(cols[3:]):
+        # i interface
+        z_i = df_interfaces[col_i].values
+        v_i = df_velocity.iloc[:, i-1].values
+        z_i_reshape = np.reshape(z_i, (n_cells_y, n_cells_x))
+        v_i_reshape = np.reshape(v_i, (n_cells_y, n_cells_x))
+        # extract rows corresponding to the fixed coordinate
+        if fixed_coord == 'x':
+            z_i_slice = z_i_reshape[:, i_cell]
+            v_i_slice = v_i_reshape[:, i_cell]
+        else:
+            z_i_slice = z_i_reshape[i_cell, :]
+            v_i_slice = v_i_reshape[i_cell, :]
+        # loop on rows i_r
+        for j in range(n_cells):
+            slice_section[np.where((z_axis>z_minus_1_slice) & (z_axis<=z_i_slice)), j] = v_i_slice[j]
+        # update i-1 interface
+        z_minus_1_slice = z_i_slice
+    h_im = ax.pcolormesh(coord_axis/1000, z_axis, slice_section)
+    h_cbar = plt.colorbar(mappable=h_im)
+    h_cbar.ax.set_ylabel('Interval Vp (m/s)', rotation=270)
+    plt.grid(True, which='major', linestyle='-')
+    ax.xaxis.set_major_formatter(FormatStrFormatter('%.0f'))
+    ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+    str_title = "".join(['Cross-section at ', fixed_coord, ' = ', str(coord_val / 1000), ' km'])
+    ax.set_title(str_title)
+    ax.set_xlabel(str_xlabel)
+    ax.set_ylabel('Depth bsl (m)')
+    fig.savefig(str(path_data.joinpath(col_i)) +
+                "".join([fixed_coord + str(coord_val / 1000) + 'km']) +
+                '.png')
+    plt.close(fig)
+    # plot all the interfaces on top of the image
+    # ax.plot(coord_axis/1000, z_ground_level_slice, color='k')
+    pass
+
+
 def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y, folder_out, n_skip=1):
     x = dispersion_dict['X'].values
     y = dispersion_dict['Y'].values
@@ -588,14 +670,25 @@ if __name__ == '__main__':
 
     # compute dispersion curves
     nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
-    dispersion_dict = loop_on_cells(df_velocity_interp, df_thickness_interp, settings_synthetics.vp_over_vs,
-                  settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
-                  settings_synthetics.wavetype, settings_synthetics.modes,
-                  settings_synthetics.velocity_mode, settings_synthetics.ny)
+    # dispersion_dict = loop_on_cells(df_velocity_interp, df_thickness_interp, settings_synthetics.vp_over_vs,
+    #               settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
+    #               settings_synthetics.wavetype, settings_synthetics.modes,
+    #               settings_synthetics.velocity_mode, settings_synthetics.ny)
+    #
+    # file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
+    # dict_h5_list = save_h5(dispersion_dict, file_out)
 
-    file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
-    dict_h5_list = save_h5(dispersion_dict, file_out)
+    # save_dispersion_plots(dispersion_dict, 'mode_0',
+    #                  settings_synthetics.n_cells, settings_synthetics.n_cells,
+    #                  str(Path(make_synthetics.path_out_format_1)))
 
-    save_dispersion_plots(dispersion_dict, 'mode_0',
-                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                     str(Path(make_synthetics.path_out_format_1)))
+    for x_section in settings_synthetics.x_cross_sections:
+        save_cross_section_plots(df_interfaces_interp, df_velocity_interp, "dispersion_dict",
+                                 settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                 str(Path(make_synthetics.path_out_format_1)),
+                                 fixed_coord='x', coord_val=x_section)
+    for y_section in settings_synthetics.y_cross_sections:
+        save_cross_section_plots(df_interfaces_interp, df_velocity_interp, "dispersion_dict",
+                                 settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                 str(Path(make_synthetics.path_out_format_1)),
+                                 fixed_coord='y', coord_val=y_section)

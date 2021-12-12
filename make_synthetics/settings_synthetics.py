@@ -61,3 +61,14 @@ modes = ast.literal_eval(path_w_type["modes"])
 path_solver_params = config["SOLVER_PARAMS"]
 n_layers = str(path_solver_params["n_layers"])
 ny = int(path_solver_params["ny"])
+
+path_plot_opts = config["PLOT_OPTIONS"]
+plot_interfaces = str_to_bool(path_plot_opts["plot_interfaces"])
+plot_thicknesses = str_to_bool(path_plot_opts["plot_thicknesses"])
+plot_velocities = str_to_bool(path_plot_opts["plot_velocities"])
+plot_dispersion_maps = str_to_bool(path_plot_opts["plot_dispersion_maps"])
+plot_all_dispersion_curves = str_to_bool(path_plot_opts["plot_all_dispersion_curves"])
+plot_cross_sections = str_to_bool(path_plot_opts["plot_cross_sections"])
+x_cross_sections = ast.literal_eval(path_plot_opts["x_cross_sections"])
+y_cross_sections = ast.literal_eval(path_plot_opts["y_cross_sections"])
+plot_disp_curve_every_km = float(path_plot_opts["plot_disp_curve_every_km"])
