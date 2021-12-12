@@ -11,7 +11,9 @@ from pyproj import CRS
 from pyproj import Transformer
 import h5py
 from scipy.signal import medfilt2d
-
+from matplotlib import pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
+plt.ioff()
 
 def remove_first_digit(x):
     """in order to remove the front "2" digit in Lambert II Y coordinate"""
@@ -198,6 +200,36 @@ def reorder_interfaces_by_depth(interface_list, interface_order):
     return interface_list
 
 
+def remove_outliers(df_in, std_thresh=3):
+    cols = list(df_in)
+    for col_i in cols[2:]:
+        vals_i = df_in[col_i].values
+        mean_val = np.nanmean(vals_i)
+        std_val = np.nanstd(vals_i)
+        vals_i[np.abs(vals_i - mean_val) > std_thresh * std_val] = np.nan
+        df_in[col_i] = vals_i
+
+    return df_in
+
+
+def edit_velocities_as_suggested_by_catherine(df_velocity):
+    df_velocity['(H01-H02) Vint'] = 1600.       # sables de l'orléanais
+    df_velocity['(H02-H03) Vint'] = 1900.       # calcaires de beauce
+    df_velocity['(H03-H04) Vint'] = 2200.       # craie
+    df_velocity['(H04-H10) Vint'] = 2200.       # merge cenomanien and craie
+    return df_velocity
+
+
+def replace_velocities_by_mean_values_except_layer1(df_in):
+    cols = list(df_in)
+    for col_i in cols[3:]:
+        vals_i = df_in[col_i].values
+        mean_val = np.nanmean(vals_i)
+        df_in[col_i] = mean_val
+
+    return df_in
+
+
 def interpolate_model_per_layer(df_in, xmin=None, xmax=None, ymin=None, ymax=None, n_cells=None,
                                lateral_smooth=False, smooth_length=100, dx_in=None,  dy_in=None):
     """ 2D interpolation of NaN values in each horizon independently.
@@ -377,18 +409,90 @@ def save_h5(dispersion_dict, file_out):
     return dict_h5_list
 
 
-def save_model_plots(df_interfaces, df_thickness, df_velocity):
+def save_model_plots(df_data, name_data, n_cells_x, n_cells_y, folder_out):
     """writes the following pngs :
     - Z of horizons
     - H of horizons
     - V of layers
-    - cross-sections V(x,z) and V(y,z) for specified X and Y values"""
+    - cross-sections V(x,z) and V(y,z) for specified X and Y values
+    Assumes the model has been intepolated on a rectagular grid"""
 
-    pass
+    x = df_data['X'].values
+    y = df_data['Y'].values
+    x_mesh = np.reshape(x, (n_cells_y, n_cells_x)) / 1000   # convert to km
+    y_mesh = np.reshape(y, (n_cells_y, n_cells_x)) / 1000   # convert to km
+
+    path_data = Path(folder_out).joinpath(name_data + '_plots')
+    if name_data == 'interface':
+        str_cbar = 'Depth bsl (m) '
+    elif name_data == 'velocity':
+        str_cbar = 'Interval Vp (m/s)'
+    elif name_data == 'thickness':
+        str_cbar = 'Interval thickness (m)'
+    else:
+        raise Exception("".join(['unknown name_data: ', name_data]))
+
+    # plot data
+    if not path_data.exists():
+        path_data.mkdir()
+    cols_data = list(df_data)
+    for col_i in cols_data[2:]:
+        z = df_data[col_i].values
+        val_min = np.nanmin(z) - 1
+        val_max = np.nanmax(z) + 1
+        z_mesh = np.reshape(z, (n_cells_y, n_cells_x))
+        fig, ax = plt.subplots()
+        h_im = ax.pcolormesh(x_mesh, y_mesh, z_mesh)
+        h_im.set_clim(val_min, val_max)
+        h_cbar = plt.colorbar(mappable=h_im)
+        h_cbar.ax.set_ylabel(str_cbar, rotation=270)
+        plt.grid(True, which='major', linestyle='-')
+        ax.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        ax.set_title(col_i)
+        ax.set_xlabel('X (km)')
+        ax.set_ylabel('Y (km)')
+        fig.savefig(str(path_data.joinpath(col_i)) + '.png')
+        plt.close(fig)
 
 
-def save_dispersion_plots():
-    pass
+def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y, folder_out):
+    x = dispersion_dict['X'].values
+    y = dispersion_dict['Y'].values
+    x_mesh = np.reshape(x, (n_cells_y, n_cells_x)) / 1000   # convert to km
+    y_mesh = np.reshape(y, (n_cells_y, n_cells_x)) / 1000   # convert to km
+
+    if field in list(dispersion_dict):
+        path_data = Path(folder_out).joinpath(field + '_plots')
+    else:
+        raise Exception("".join(['unknown mode: ', field]))
+
+    str_cbar = dispersion_dict['velocity_mode'] + ' velocity (m/s)'
+
+    # plot data
+    if not path_data.exists():
+        path_data.mkdir()
+
+    vals_all = dispersion_dict[field]
+    faxis = dispersion_dict['f_axis']
+    for (i, f) in enumerate(faxis):
+        z = vals_all[:, i]
+        val_min = np.nanmin(z) - 1
+        val_max = np.nanmax(z) + 1
+        z_mesh = np.reshape(z, (n_cells_y, n_cells_x))
+        fig, ax = plt.subplots()
+        h_im = ax.pcolormesh(x_mesh, y_mesh, z_mesh)
+        h_im.set_clim(val_min, val_max)
+        h_cbar = plt.colorbar(mappable=h_im)
+        h_cbar.ax.set_ylabel(str_cbar, rotation=270)
+        plt.grid(True, which='major', linestyle='-')
+        ax.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        ax.set_title("".join(["f = ", "{:.2f}".format(f), ' Hz']))
+        ax.set_xlabel('X (km)')
+        ax.set_ylabel('Y (km)')
+        fig.savefig(str(path_data.joinpath("".join(["{:.2f}".format(f), '_Hz']))) + '.png')
+        plt.close(fig)
 
 
 if __name__ == '__main__':
@@ -412,6 +516,9 @@ if __name__ == '__main__':
         read_model_fmt1(path_model_in, n_interfaces)
     df_thickness_global = compute_thickness(df_interfaces_global, df_velocity_global)
 
+    # make manual edits as suggested by specialist of chémery
+    df_velocity_global = edit_velocities_as_suggested_by_catherine(df_velocity_global)
+
     # select only points where all the horizons are well defined
     df_interfaces_valid = df_interfaces_global[~df_interfaces_global.isnull().any(axis=1)]
     df_thickness_valid = df_thickness_global[~df_interfaces_global.isnull().any(axis=1)]
@@ -430,16 +537,35 @@ if __name__ == '__main__':
         ymax = settings_synthetics.ymax
     else:
         raise Exception('unknown bounds_mode value')
+
+    df_velocity_valid = remove_outliers(df_velocity_valid, std_thresh=2)
+
     df_velocity_interp = interpolate_model_per_layer(df_velocity_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
                                                      n_cells=settings_synthetics.n_cells,
                                                      lateral_smooth=settings_synthetics.lateral_smooth,
                                                      smooth_length=settings_synthetics.smooth_length,
-                                                     dx_in = dx_in, dy_in = dy_in)
-    df_thickness_interp = interpolate_model_per_layer(df_thickness_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
+                                                     dx_in=dx_in, dy_in=dy_in)
+    df_interfaces_interp = interpolate_model_per_layer(df_interfaces_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
                                                      n_cells=settings_synthetics.n_cells,
                                                      lateral_smooth=settings_synthetics.lateral_smooth,
                                                      smooth_length=settings_synthetics.smooth_length,
-                                                     dx_in = dx_in, dy_in = dy_in)
+                                                     dx_in=dx_in, dy_in=dy_in)
+
+    df_thickness_interp = compute_thickness(df_interfaces_interp, df_velocity_interp)
+
+    df_velocity_interp = replace_velocities_by_mean_values_except_layer1(df_velocity_interp)
+
+    save_model_plots(df_interfaces_interp, 'interface',
+                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                     str(Path(make_synthetics.path_out_format_1)))
+
+    save_model_plots(df_thickness_interp, 'thickness',
+                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                     str(Path(make_synthetics.path_out_format_1)))
+
+    save_model_plots(df_velocity_interp, 'velocity',
+                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                     str(Path(make_synthetics.path_out_format_1)))
 
     # select only points where all values are well defined
     # df_thickness_valid = df_thickness_interp[~df_thickness_interp.isnull().any(axis=1)]
@@ -454,3 +580,7 @@ if __name__ == '__main__':
 
     file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
     dict_h5_list = save_h5(dispersion_dict, file_out)
+
+    save_dispersion_plots(dispersion_dict, 'mode_0',
+                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                     str(Path(make_synthetics.path_out_format_1)))

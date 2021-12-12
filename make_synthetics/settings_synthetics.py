@@ -3,6 +3,14 @@ import os
 from pathlib import *
 import ast
 
+def str_to_bool(s):
+    if s == 'True':
+         return True
+    elif s == 'False':
+         return False
+    else:
+         raise ValueError # evil ValueError that doesn't tell you what the wrong value was
+
 settings_extension='*.ini'
 
 src_dir = Path(__file__).parent.resolve()
@@ -37,7 +45,7 @@ cell_size = float(path_vel["cell_size"])
 n_cells = int(path_vel["n_cells"])
 xmax = xmin + cell_size * n_cells
 ymax = ymin + cell_size * n_cells
-lateral_smooth = bool(path_vel["lateral_smooth"])
+lateral_smooth = str_to_bool(path_vel["lateral_smooth"])
 smooth_length = float(path_vel["smooth_length"])
 
 path_f_band = config["FREQUENCY_BAND"]
