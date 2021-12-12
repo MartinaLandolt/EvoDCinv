@@ -494,9 +494,9 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
     z_ground_level_all_vals = df_interfaces.iloc[:, 2].values
     z_ground_level_reshape = np.reshape(z_ground_level_all_vals, (n_cells_y, n_cells_x))
     if fixed_coord == 'x':
-        z_ground_level_slice = z_ground_level_reshape[:, i_cell]
+        z_ground_level_slice = z_ground_level_reshape[:, i_cell].flatten()
     else:
-        z_ground_level_slice = z_ground_level_reshape[i_cell, :]
+        z_ground_level_slice = z_ground_level_reshape[i_cell, :].flatten()
 
     # loop on velocities
     cols = list(df_interfaces)
@@ -504,19 +504,19 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
     for (i, col_i) in enumerate(cols[3:]):
         # i interface
         z_i = df_interfaces[col_i].values
-        v_i = df_velocity.iloc[:, i-1].values
+        v_i = df_velocity.iloc[:, i+2].values
         z_i_reshape = np.reshape(z_i, (n_cells_y, n_cells_x))
         v_i_reshape = np.reshape(v_i, (n_cells_y, n_cells_x))
         # extract rows corresponding to the fixed coordinate
         if fixed_coord == 'x':
-            z_i_slice = z_i_reshape[:, i_cell]
-            v_i_slice = v_i_reshape[:, i_cell]
+            z_i_slice = z_i_reshape[:, i_cell].flatten()
+            v_i_slice = v_i_reshape[:, i_cell].flatten()
         else:
-            z_i_slice = z_i_reshape[i_cell, :]
-            v_i_slice = v_i_reshape[i_cell, :]
+            z_i_slice = z_i_reshape[i_cell, :].flatten()
+            v_i_slice = v_i_reshape[i_cell, :].flatten()
         # loop on rows i_r
         for j in range(n_cells):
-            slice_section[np.where((z_axis>z_minus_1_slice) & (z_axis<=z_i_slice)), j] = v_i_slice[j]
+            slice_section[np.where((z_axis>z_minus_1_slice[j]) & (z_axis<=z_i_slice[j])), j] = v_i_slice[j]
         # update i-1 interface
         z_minus_1_slice = z_i_slice
     h_im = ax.pcolormesh(coord_axis/1000, z_axis, slice_section)
@@ -529,9 +529,10 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
     ax.set_title(str_title)
     ax.set_xlabel(str_xlabel)
     ax.set_ylabel('Depth bsl (m)')
-    fig.savefig(str(path_data.joinpath(col_i)) +
+    ax.invert_yaxis()
+    fig.savefig(str(path_data.joinpath('section_' +
                 "".join([fixed_coord + str(coord_val / 1000) + 'km']) +
-                '.png')
+                '.png')))
     plt.close(fig)
     # plot all the interfaces on top of the image
     # ax.plot(coord_axis/1000, z_ground_level_slice, color='k')
