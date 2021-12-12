@@ -411,9 +411,8 @@ if __name__ == '__main__':
                                                      dx_in = dx_in, dy_in = dy_in)
 
     # select only points where all values are well defined
-    # df_interfaces_valid = df_interfaces_valid[~df_velocity_interp.isnull().any(axis=1)]
-    # df_thickness_valid = df_thickness_interp[~df_velocity_interp.isnull().any(axis=1)]
-    # df_velocity_valid = df_velocity_interp[~df_velocity_interp.isnull().any(axis=1)]
+    # df_thickness_valid = df_thickness_interp[~df_thickness_interp.isnull().any(axis=1)]
+    # df_velocity_valid = df_velocity_interp[~df_thickness_interp.isnull().any(axis=1)]
 
     # compute dispersion curves
     nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
