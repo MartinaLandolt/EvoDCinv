@@ -1,0 +1,3 @@
+numpy
+matplotlib
+stochopy==1.7.3

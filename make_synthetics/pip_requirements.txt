@@ -1,4 +1,4 @@
 pandas
 pyproj
-numpy
 scipy
+h5py

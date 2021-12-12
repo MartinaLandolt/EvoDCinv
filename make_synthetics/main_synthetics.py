@@ -105,25 +105,25 @@ def read_model_fmt1(path_model, nb_interfaces):
         else:
             df_velocity_global = pd.merge(df_velocity_global, velocity_layer_i, how='inner', on=['X', 'Y'])
 
-    columns_velocity = list(df_velocity_global)
+    # columns_velocity = list(df_velocity_global)
     columns_interfaces = list(df_interfaces_global)
 
-    df_thickness_global = df_interfaces_global[['X', 'Y']].copy()
-    for (i, col_vel) in enumerate(columns_velocity[2:]):
-        j=i+2
-        z_i_minus_1 = df_interfaces_global.iloc[:,j].values
-        z_i = df_interfaces_global.iloc[:, j+1].values
-        col_thick = col_vel.replace('Vint', 'Thickness')
-        df_thickness_global[col_thick] = z_i - z_i_minus_1
+    # df_thickness_global = df_interfaces_global[['X', 'Y']].copy()
+    # for (i, col_vel) in enumerate(columns_velocity[2:]):
+    #     j=i+2
+    #     z_i_minus_1 = df_interfaces_global.iloc[:,j].values
+    #     z_i = df_interfaces_global.iloc[:, j+1].values
+    #     col_thick = col_vel.replace('Vint', 'Thickness')
+    #     df_thickness_global[col_thick] = z_i - z_i_minus_1
 
     # keep only common (X,Y) between thickness and velocity
-    columns_thickness = list(df_thickness_global)
-    df_thickness_global_merge = pd.merge(df_velocity_global, df_thickness_global, how='inner', on=['X', 'Y'])
+    # columns_thickness = list(df_thickness_global)
+    #df_thickness_global_merge = pd.merge(df_velocity_global, df_thickness_global, how='inner', on=['X', 'Y'])
     df_interfaces_global_merge = pd.merge(df_velocity_global, df_interfaces_global, how='inner', on=['X', 'Y'])
-    df_thickness_global = df_thickness_global_merge[columns_thickness]
+    # df_thickness_global = df_thickness_global_merge[columns_thickness]
     df_interfaces_global = df_interfaces_global_merge[columns_interfaces]
 
-    return df_velocity_global, df_thickness_global, df_interfaces_global, dx_in, dy_in
+    return df_velocity_global, df_interfaces_global, dx_in, dy_in
 
 
 def get_interface_number_fmt1(path_model):
@@ -139,6 +139,22 @@ def get_interface_number_fmt1(path_model):
     if nb_interfaces - nb_layers != 1:
         raise Exception("".join(['nb_interfaces - nb_layers should be 1, but found ', nb_interfaces - nb_layers]))
     return nb_interfaces, nb_layers
+
+
+def compute_thickness(df_interfaces, df_velocity):
+
+    columns_velocity = list(df_velocity)
+    columns_interfaces = list(df_interfaces)
+
+    df_thickness = df_interfaces[['X', 'Y']].copy()
+    for (i, col_vel) in enumerate(columns_velocity[2:]):
+        j = i+2
+        z_i_minus_1 = df_interfaces.iloc[:, j].values
+        z_i = df_interfaces.iloc[:, j+1].values
+        col_thick = col_vel.replace('Vint', 'Thickness')
+        df_thickness[col_thick] = z_i - z_i_minus_1
+
+    return df_thickness
 
 
 def find_grid_step(x_in, y_in):
@@ -361,6 +377,20 @@ def save_h5(dispersion_dict, file_out):
     return dict_h5_list
 
 
+def save_model_plots(df_interfaces, df_thickness, df_velocity):
+    """writes the following pngs :
+    - Z of horizons
+    - H of horizons
+    - V of layers
+    - cross-sections V(x,z) and V(y,z) for specified X and Y values"""
+
+    pass
+
+
+def save_dispersion_plots():
+    pass
+
+
 if __name__ == '__main__':
     print('model format : ', settings_synthetics.type_vel_model)
     if settings_synthetics.type_vel_model == 1:
@@ -378,8 +408,9 @@ if __name__ == '__main__':
         raise Exception("User-fixed layer number not yet supported. Number of layers should be auto")
 
     # read model
-    df_velocity_global, df_thickness_global, df_interfaces_global, dx_in, dy_in = \
+    df_velocity_global, df_interfaces_global, dx_in, dy_in = \
         read_model_fmt1(path_model_in, n_interfaces)
+    df_thickness_global = compute_thickness(df_interfaces_global, df_velocity_global)
 
     # select only points where all the horizons are well defined
     df_interfaces_valid = df_interfaces_global[~df_interfaces_global.isnull().any(axis=1)]
