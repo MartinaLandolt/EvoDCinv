@@ -456,7 +456,7 @@ def save_model_plots(df_data, name_data, n_cells_x, n_cells_y, folder_out):
         plt.close(fig)
 
 
-def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y, folder_out):
+def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y, folder_out, n_skip=1):
     x = dispersion_dict['X'].values
     y = dispersion_dict['Y'].values
     x_mesh = np.reshape(x, (n_cells_y, n_cells_x)) / 1000   # convert to km
@@ -469,12 +469,13 @@ def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y, folder_o
 
     str_cbar = dispersion_dict['velocity_mode'] + ' velocity (m/s)'
 
-    # plot data
     if not path_data.exists():
         path_data.mkdir()
 
     vals_all = dispersion_dict[field]
     faxis = dispersion_dict['f_axis']
+
+    # plot maps of velocity per frequency
     for (i, f) in enumerate(faxis):
         z = vals_all[:, i]
         val_min = np.nanmin(z) - 1
@@ -493,6 +494,20 @@ def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y, folder_o
         ax.set_ylabel('Y (km)')
         fig.savefig(str(path_data.joinpath("".join(["{:.2f}".format(f), '_Hz']))) + '.png')
         plt.close(fig)
+
+    # plot all dispersion curves in one plot for checking mode jumps
+    fig, ax = plt.subplots()
+    all_indices = range(len(x))
+    subindices = all_indices[::n_skip]
+    for i in subindices:
+        disp_curve_i = vals_all[i, :]
+        ax.plot(faxis, disp_curve_i)
+        ax.set_ylabel(str_cbar, rotation=270)
+        ax.set_xlabel('Frequency (Hz)')
+        ax.set_title('All dispersion curves')
+        plt.grid(True, which='major', linestyle='-')
+    fig.savefig(str(path_data.joinpath('all_curves' + '.png')))
+    plt.close(fig)
 
 
 if __name__ == '__main__':
