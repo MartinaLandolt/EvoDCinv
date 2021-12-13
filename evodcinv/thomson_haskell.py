@@ -16,9 +16,9 @@ __all__ = [ "ThomsonHaskell" ]
 
 
 class ThomsonHaskell:
-    
+
     _WTYPE = [ "rayleigh", "love" ]
-    
+
     """
     Thomson-Haskell propagator.
     
@@ -48,7 +48,7 @@ class ThomsonHaskell:
             raise ValueError("wtype must be in %s, got '%s'" % (self._WTYPE, wtype))
         else:
             self._wtype = wtype
-    
+
     def propagate(self, f, ny = 100, domain = "fc", eps = 0.1, n_threads = 1):
         """
         Compute the analytical dispersion curve modes.
@@ -80,13 +80,13 @@ class ThomsonHaskell:
             raise ValueError("ny must be a positive integer")
         if not isinstance(domain, str) or domain not in [ "fc", "fk" ]:
             raise ValueError("domain should either be 'fc' or 'fk'")
-        
+
         # Import parameters
         alpha = self._velocity_model[:,0]
         beta = self._velocity_model[:,1]
         rho = self._velocity_model[:,2]
         d = self._velocity_model[:,3]
-        
+
         # Thomson-Haskell method
         vr = self._rayleigh_velocity()
         vmin = max(0.1, np.floor(vr.min()))
@@ -101,24 +101,24 @@ class ThomsonHaskell:
             y = np.linspace(2.*np.pi*f[0]/vmax, 2.*np.pi*f[-1]/vmin, ny)
             panel = dc.fkpanel(f, y, alpha, beta, rho, d,
                                wtype = self._wtype, n_threads = n_threads)
-        
+
         self._faxis = f
         self._yaxis = y
         self._panel = np.real(panel)
         self._domain = domain
         return panel
-    
+
     def _poisson_ratio(self):
         alpha = self._velocity_model[:,0]
         beta = self._velocity_model[:,1]
         ksi = alpha**2 / beta**2
         return ( 1. - 0.5*ksi ) / ( 1. - ksi )
-    
+
     def _rayleigh_velocity(self):
         beta = self._velocity_model[:,1]
         nu = self._poisson_ratio()
         return beta * ( 0.87 + 1.12 * nu ) / ( 1. + nu )
-    
+
     def pick(self, modes = [ 0 ]):
         """
         Pick dispersion curve for different propagation mode.
@@ -140,44 +140,32 @@ class ThomsonHaskell:
         if not isinstance(modes, list) or np.min(modes) < 0 \
             or not np.all([ isinstance(m, int) for m in modes ]):
             raise ValueError("modes must be a list of positive integers")
-        
+
         dcurve = [ [] for m in modes ]
         faxis = [ [] for m in modes ]
 
-        n_mode = 0
-        count_jump = 0
-        #rms0 = np.infty
-        rms0 = []
+        n_mode = 0                              # mode counter
+        count_jump = 0                          # counter of new modes appearing in the panel since
+                                                # the last detection of a lacking mode
+        i_max_search = self._panel.shape[0]     # index to cut the panel for mode detection only in useful range
         for i, f in enumerate(self._faxis):
-            tmp = self._panel[:,i] / np.abs(np.nanmax(self._panel[:,i]))
-            idx = np.where((np.sign(tmp[:-1]) * np.sign(tmp[1:])) < 0.)[0]
+            tmp = self._panel[:i_max_search, i] / \
+                  np.abs(np.nanmax(self._panel[:i_max_search, i]))      # extract panel column
+            idx = np.where((np.sign(tmp[:-1]) *
+                            np.sign(tmp[1:])) < 0.)[0]                  # detect sign changes = modes
             tmp_non_nan = tmp[~np.isnan(tmp)]
-            sgn = np.sign(tmp_non_nan[-1])
+            sgn = np.sign(tmp_non_nan[-1])                              # store sign on the top of the panel
+                                                                        # (useful for detecting when a new mode enters)
             if i == 0:
-                idx0 = idx
-                sgn0 = sgn
-            n_mode_new = len(idx)
-            if (n_mode_new > n_mode + count_jump) | ((sgn == sgn0) & (n_mode_new == n_mode + count_jump)):
-                #flag_good = True
-                # if (n_mode_new > 1) & (n_mode > 1):
-                    # idx_truncated = idx[:-1]
-                    # stop_index1 = min(len(modes)+1, len(idx0)-1, len(idx_truncated))
-                    # rms_index1 = np.sum((idx_truncated[:stop_index1] - idx0[:stop_index1]) ** 2) / stop_index1
-                    # rms_index2 = np.sum((idx_truncated[:stop_index1] - idx0[1:stop_index1 + 1]) ** 2) / stop_index1
-                    # # if rms0 == np.infty:
-                    # #     rms0 = max(100, rms_index1)
-                    # if len(rms0) == 0:
-                    #     rms0.append(max(5, rms_index1))
-                    # flag_good = (rms_index1 < rms_index2) & (rms_index1 / np.mean(rms0) < 10)
-                    # if flag_good:
-                    #     rms0.append(max(5, rms_index1))
-                    #     if len(rms0) > 5:
-                    #         rms0 = rms0[-5:]
-                #if flag_good:
-                count_jump = 0
-                idx0 = idx
-                sgn0 = sgn
-                n_mode = n_mode_new
+                sgn0 = sgn                                              # initialize sign
+            n_mode_new = len(idx)                                       # count detected modes
+            condition1 = n_mode_new > (n_mode + count_jump)
+                        # new number of modes is greater than previous
+            condition2 = (sgn == sgn0) & (n_mode_new == n_mode + count_jump)
+                        # new number of modes is equal to the previous
+                        # and the sign at the top of the panel hasn't changed
+            regular_situation_condition = condition1 | condition2
+            if regular_situation_condition:
                 for j, m in enumerate(modes):
                     if len(idx) >= m+1:
                         xr = [ tmp[idx[m]], tmp[idx[m]+1] ]
@@ -185,10 +173,25 @@ class ThomsonHaskell:
                         x = ( vr[0] * xr[1] - vr[1] * xr[0] ) / ( xr[1] - xr[0] )
                         dcurve[j].append(x)
                         faxis[j].append(f)
+
+                if (n_mode_new > len(modes)+1) & (n_mode_new > n_mode):
+                    # cut the panel above the mode mode_max_requested + 1
+                    i_max_search = min(idx[len(modes)+1] + 2, self._panel.shape[0] - 1)
+                    # update everything
+                    tmp = self._panel[:i_max_search, i] / np.abs(np.nanmax(self._panel[:i_max_search, i]))
+                    idx = np.where((np.sign(tmp[:-1]) * np.sign(tmp[1:])) < 0.)[0]
+                    tmp_non_nan = tmp[~np.isnan(tmp)]
+                    n_mode_new = len(idx)
+                    sgn = np.sign(tmp_non_nan[-1])
+
+                count_jump = 0
+                sgn0 = sgn
+                n_mode = n_mode_new
             else:
                 if sgn != sgn0:
                     count_jump += 1
-                print("debug")
+                print("risk of mode jump detected")
+
         for j, m in enumerate(modes):
             if len(faxis[j]) > 0:
                 faxis_full = self._faxis[(self._faxis>=min(faxis[j])) & (self._faxis<=max(faxis[j]))]
@@ -197,7 +200,7 @@ class ThomsonHaskell:
                 dcurve[j] = dcurve_full
 
 
-        
+
         dcurves = []
 
         for i, (d, f) in enumerate(zip(dcurve, faxis)):
@@ -214,7 +217,7 @@ class ThomsonHaskell:
 #            idx = np.where(d > 0.)[0]
 #            dcurves.append(DispersionCurve(d[idx], f[idx], int(modes[i]), self._wtype))
         return dcurves
-    
+
     def save_picks(self, filename, modes = [ 0 ]):
         """
         Export picked dispersion curves to ASCII file.
@@ -235,7 +238,7 @@ class ThomsonHaskell:
                 else:
                     header = "# Mode %d\n" % dcurve.mode
                 fid.write(header)
-                
+
                 d = dcurve.phase_velocity
                 f = dcurve.faxis
                 npts = len(d)
@@ -243,7 +246,7 @@ class ThomsonHaskell:
                     fid.write(str(f[i]) + " " + str(d[i]) + "\n")
                 fid.write("\n")
         fid.close()
-    
+
     def plot(self, n_levels = 200, axes = None, figsize = (8, 8), cmap = None,
              cont_kws = {}):
         """
@@ -275,7 +278,7 @@ class ThomsonHaskell:
             raise ValueError("figsize must be a tuple with 2 elements")
         if not isinstance(cont_kws, dict):
             raise ValueError("cont_kws must be a dictionary")
-        
+
         if cmap is None:
             cmap = self._set_cmap()
         if axes is None:
@@ -283,7 +286,7 @@ class ThomsonHaskell:
             fig.patch.set_alpha(0.)
             ax1 = fig.add_subplot(1, 1, 1)
         else:
-            ax1 = axes        
+            ax1 = axes
         cax = ax1.contourf(self._faxis, self._yaxis, np.log(np.abs(self._panel)),
                      n_levels, cmap = cmap, **cont_kws)
         ax1.set_xlabel("Frequency (Hz)", fontsize = 12)
@@ -293,14 +296,14 @@ class ThomsonHaskell:
             ax1.set_ylabel("Wavenumber (rad/m)", fontsize = 12)
         ax1.grid(True, linestyle = ":")
         return cax
-        
+
     def _set_cmap(self):
         import matplotlib.cm as cm
         if hasattr(cm, "viridis"):
             return "viridis"
         else:
             return "jet"
-    
+
     @property
     def velocity_model(self):
         """
@@ -310,11 +313,11 @@ class ThomsonHaskell:
         and thickness (m).
         """
         return self._velocity_model
-    
+
     @velocity_model.setter
     def velocity_model(self, value):
         self._velocity_model = value
-        
+
     @property
     def wtype(self):
         """
@@ -322,11 +325,11 @@ class ThomsonHaskell:
         Surface wave type ('rayleigh' or 'love').
         """
         return self._wtype
-    
+
     @wtype.setter
     def wtype(self, value):
         self._wtype = value
-        
+
     @property
     def faxis(self):
         """
@@ -334,7 +337,7 @@ class ThomsonHaskell:
         Frequency axis (in Hz).
         """
         return self._faxis
-    
+
     @faxis.setter
     def faxis(self, value):
         self._faxis = value
@@ -360,11 +363,11 @@ class ThomsonHaskell:
         - Wavenumber (rad/m) if domain = 'fk'.
         """
         return self._yaxis
-    
+
     @yaxis.setter
     def yaxis(self, value):
         self._yaxis = value
-        
+
     @property
     def panel(self):
         """
@@ -372,18 +375,18 @@ class ThomsonHaskell:
         Dispersion curve panel.
         """
         return self._panel
-    
+
     @panel.setter
     def panel(self, value):
         self._panel = value
-        
+
     @property
     def domain(self):
         """
         Domain in which the dispersion curve is computed.
         """
         return self._domain
-    
+
     @domain.setter
     def domain(self, value):
         self._domain = value

@@ -362,10 +362,11 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
                 try:
                     dispersion_dict["".join(['mode_', str(mode)])][cell_count, i_f] = vel_vals
                 except:
+                    print('cell ', cell_count, ' out of ', len(df_velocity_global))
                     print('debug')
 
         cell_count += 1
-        print('cell ', cell_count, ' out of ', len(df_velocity_global))
+        # print('cell ', cell_count, ' out of ', len(df_velocity_global))
 
     return dispersion_dict
 
