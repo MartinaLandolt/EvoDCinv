@@ -174,7 +174,6 @@ class ThomsonHaskell:
                         dcurve[j].append(x)
                         faxis[j].append(f)
 
-                #if (n_mode_new > len(modes)+1) & (n_mode_new > n_mode):
                 if (n_mode_new > len(modes) + 1):
                     # cut the panel above the mode mode_max_requested + 1
                     i_max_search = min(idx[len(modes)] + 2, self._panel.shape[0] - 1)
@@ -191,8 +190,7 @@ class ThomsonHaskell:
             else:
                 if sgn != sgn0:
                     count_jump += 1
-                print("risk of mode jump detected")
-
+                #print("debug")
         for j, m in enumerate(modes):
             if len(faxis[j]) > 0:
                 faxis_full = self._faxis[(self._faxis>=min(faxis[j])) & (self._faxis<=max(faxis[j]))]
