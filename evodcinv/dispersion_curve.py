@@ -175,19 +175,29 @@ class DispersionCurve:
             faxis = self.faxis
 
         if len(faxis) >= 2 :
-            omega = 2*np.pi*faxis
+            # Interpolate phase_velocity on an faxis with small steps to avoid spikes while deriving
+            fmin = faxis[0] ; fmax = faxis[-1]
+            df = 0.01
+            tmp_faxis = np.arange(fmin, fmax+df, df)
+            tmp_phase_velocity = np.interp(tmp_faxis, faxis, phase_velocity)
+
+            # omega = 2*np.pi*faxis
+            omega = 2 * np.pi * tmp_faxis
             domega = omega[1] - omega[0]
             if not np.allclose(np.diff(omega), domega, rtol=10**-2):
                 raise ValueError("""Frequencies not evenly spaced. 
                        Could not convert from phase velocity to group velocity""")
-            dphase_domega = np.gradient(phase_velocity, domega)
+            dphase_domega = np.gradient(tmp_phase_velocity, domega)
             #group_velocity = phase_velocity  + omega * dphase_domega
-            group_velocity = phase_velocity / (1 - omega/phase_velocity * dphase_domega)
-            diff_vg = np.diff(group_velocity)
+            group_velocity_tmp = tmp_phase_velocity / (1 - omega/tmp_phase_velocity * dphase_domega)
+            diff_vg = np.diff(group_velocity_tmp)
             diff_vg = np.hstack((diff_vg, diff_vg[-1]))
             flag_stop = np.max(np.abs(diff_vg[faxis > 1])) > 100
-            if flag_stop:
-                print('debug')
+            # if flag_stop:
+            #     print('debug')
+            #Interpolate velocity on faxis from the phase_velocity
+            group_velocity = np.interp(faxis, tmp_faxis, group_velocity_tmp)
+
             self.group_velocity = group_velocity
             self.dtype = 'group'
             self.dtype_velocity = group_velocity

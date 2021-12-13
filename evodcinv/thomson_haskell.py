@@ -188,7 +188,7 @@ class ThomsonHaskell:
             else:
                 if sgn != sgn0:
                     count_jump += 1
-                print("debug")
+                #print("debug")
         for j, m in enumerate(modes):
             if len(faxis[j]) > 0:
                 faxis_full = self._faxis[(self._faxis>=min(faxis[j])) & (self._faxis<=max(faxis[j]))]
