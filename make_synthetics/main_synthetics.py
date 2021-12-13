@@ -11,6 +11,7 @@ from pyproj import CRS
 from pyproj import Transformer
 import h5py
 from scipy.signal import medfilt2d
+import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 plt.ioff()
@@ -319,7 +320,7 @@ def get_dispersion_curve(l, f_axis, ny, modes, wavetype, velocity_mode):
 
 
 def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
-                  fmin, fmax, nb_f, wavetype, modes, velocity_mode, ny):
+                  fmin, fmax, nb_f, wavetype, modes, velocity_mode, ny, vel_last_layer):
 
     # set common frequency axis
     f = np.linspace(fmin, fmax, nb_f)
@@ -345,7 +346,7 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
                 dispersion_dict["".join(['mode_', str(mode)])][cell_count, :] = np.nan
         else:
             thickness_array_clean, velocity_array_clean = \
-                make_1d_model_for_cell(thickness_array, velocity_array)
+                make_1d_model_for_cell(thickness_array, velocity_array, last_layer_vel=vel_last_layer)
             l = convert_1d_model_to_th_format(velocity_array_clean, thickness_array_clean,
                                               vp_over_vs_ratio=vp_over_vs_ratio)
             try:
@@ -458,7 +459,8 @@ def save_model_plots(df_data, name_data, n_cells_x, n_cells_y, folder_out):
 
 def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cells_x, n_cells_y, folder_out,
                              fixed_coord='x', coord_val=None, dz=5,
-                             z_margin_bottom=200, z_margin_top=20):
+                             z_margin_bottom=200, z_margin_top=20, vel_last_layer=None,
+                             delta_x_disp_curves=None, mode_field=None):
 
     path_data = Path(folder_out).joinpath('cross_section_plots')
     if not path_data.exists():
@@ -476,13 +478,17 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
 
     # initialize 2d slice
     if fixed_coord == 'x':
+        other_coord = 'y'
         n_cells = n_cells_y
         i_cell = [i for i in range(len(x_axis)) if np.abs(x_axis[i] - coord_val) == min(np.abs(x_axis - coord_val))]
+        coord_val_true = x_axis[i_cell][0]
         coord_axis = y_axis
         str_xlabel = 'Y (km)'
     elif fixed_coord == 'y':
+        other_coord = 'x'
         n_cells = n_cells_x
         i_cell = [i for i in range(len(y_axis)) if np.abs(y_axis[i] - coord_val) == min(np.abs(y_axis - coord_val))]
+        coord_val_true = y_axis[i_cell][0]
         coord_axis = x_axis
         str_xlabel = 'X (km)'
     else:
@@ -519,6 +525,9 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
             slice_section[np.where((z_axis>z_minus_1_slice[j]) & (z_axis<=z_i_slice[j])), j] = v_i_slice[j]
         # update i-1 interface
         z_minus_1_slice = z_i_slice
+    # fill bottom layer
+    for j in range(n_cells):
+        slice_section[np.where(z_axis > z_i_slice[j]), j] = vel_last_layer
     h_im = ax.pcolormesh(coord_axis/1000, z_axis, slice_section)
     h_cbar = plt.colorbar(mappable=h_im)
     h_cbar.ax.set_ylabel('Interval Vp (m/s)', rotation=270)
@@ -530,13 +539,65 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
     ax.set_xlabel(str_xlabel)
     ax.set_ylabel('Depth bsl (m)')
     ax.invert_yaxis()
+
+    # plot all the interfaces on top of the image
+    for (i, col_i) in enumerate(cols[2:]):
+        # i interface
+        z_i = df_interfaces[col_i].values
+        z_i_reshape = np.reshape(z_i, (n_cells_y, n_cells_x))
+        # extract rows corresponding to the fixed coordinate
+        if fixed_coord == 'x':
+            z_i_slice = z_i_reshape[:, i_cell].flatten()
+        else:
+            z_i_slice = z_i_reshape[i_cell, :].flatten()
+        ax.plot(coord_axis / 1000, z_i_slice, color='k')
+
     fig.savefig(str(path_data.joinpath('section_' +
                 "".join([fixed_coord + str(coord_val / 1000) + 'km']) +
                 '.png')))
     plt.close(fig)
-    # plot all the interfaces on top of the image
-    # ax.plot(coord_axis/1000, z_ground_level_slice, color='k')
-    pass
+
+    if delta_x_disp_curves is not None:
+        # plot dispersion curves along section
+        cmap = matplotlib.cm.get_cmap('brg')
+        fig, ax = plt.subplots()
+        vals_all = dispersion_dict[mode_field]
+        faxis = dispersion_dict['f_axis']
+        str_cbar = dispersion_dict['velocity_mode'] + ' velocity (m/s)'
+
+        coord_list_disp_curves = np.arange(np.ceil(np.nanmin(coord_axis)/1000),
+                                           np.floor(np.nanmax(coord_axis))/1000,
+                                           delta_x_disp_curves) * 1000
+        h_plot_list = []
+        str_legend = []
+        for (ii, coord_i) in enumerate(coord_list_disp_curves):
+            if fixed_coord == 'x':
+                i_other = [i for i in range(len(y_axis)) if
+                          np.abs(y_axis[i] - coord_i) == min(np.abs(y_axis - coord_i))]
+                coord_i_true = y_axis[i_other][0]
+                i_cell = np.where((dispersion_dict['X'] == coord_val_true) &
+                                  (dispersion_dict['Y'] == coord_i_true))
+            else:
+                i_other = [i for i in range(len(x_axis)) if
+                           np.abs(x_axis[i] - coord_i) == min(np.abs(x_axis - coord_i))]
+                coord_i_true = x_axis[i_other][0]
+                i_cell = np.where((dispersion_dict['Y'] == coord_val_true) &
+                                  (dispersion_dict['X'] == coord_i_true))
+            disp_curve_i = vals_all[i_cell, :].flatten()
+            h_plot, = ax.plot(faxis, disp_curve_i, color=cmap(float(ii/len(coord_list_disp_curves))))
+            h_plot_list.append(h_plot)
+            # print(coord_i_true/1000)
+            str_legend.append("".join([other_coord, " = ", "{:.1f}".format(coord_i_true/1000), ' km']))
+            ax.set_ylabel(str_cbar, rotation=270)
+            ax.set_xlabel('Frequency (Hz)')
+            ax.set_title("".join(['Dispersion curves along section at ',
+                                  fixed_coord, ' = ', "{:.1f}".format(coord_val_true/1000), ' km']))
+            plt.grid(True, which='major', linestyle='-')
+        plt.legend(h_plot_list, str_legend)
+        fig.savefig(str(path_data.joinpath('dispersion_curves_along_section_' +
+                                           "".join([fixed_coord + "{:.1f}".format(coord_val / 1000) + 'km']) +
+                                           '.png')))
+
 
 
 def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y, folder_out, n_skip=1):
@@ -671,25 +732,30 @@ if __name__ == '__main__':
 
     # compute dispersion curves
     nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
-    # dispersion_dict = loop_on_cells(df_velocity_interp, df_thickness_interp, settings_synthetics.vp_over_vs,
-    #               settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
-    #               settings_synthetics.wavetype, settings_synthetics.modes,
-    #               settings_synthetics.velocity_mode, settings_synthetics.ny)
-    #
-    # file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
-    # dict_h5_list = save_h5(dispersion_dict, file_out)
+    dispersion_dict = loop_on_cells(df_velocity_interp, df_thickness_interp, settings_synthetics.vp_over_vs,
+                  settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
+                  settings_synthetics.wavetype, settings_synthetics.modes,
+                  settings_synthetics.velocity_mode, settings_synthetics.ny,
+                  settings_synthetics.vel_last_layer)
 
-    # save_dispersion_plots(dispersion_dict, 'mode_0',
-    #                  settings_synthetics.n_cells, settings_synthetics.n_cells,
-    #                  str(Path(make_synthetics.path_out_format_1)))
+    file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
+    dict_h5_list = save_h5(dispersion_dict, file_out)
+
+    save_dispersion_plots(dispersion_dict, 'mode_0',
+                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                     str(Path(make_synthetics.path_out_format_1)))
 
     for x_section in settings_synthetics.x_cross_sections:
-        save_cross_section_plots(df_interfaces_interp, df_velocity_interp, "dispersion_dict",
+        save_cross_section_plots(df_interfaces_interp, df_velocity_interp, dispersion_dict,
                                  settings_synthetics.n_cells, settings_synthetics.n_cells,
                                  str(Path(make_synthetics.path_out_format_1)),
-                                 fixed_coord='x', coord_val=x_section)
+                                 fixed_coord='x', coord_val=x_section,
+                                 vel_last_layer=settings_synthetics.vel_last_layer,
+                                 mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km)
     for y_section in settings_synthetics.y_cross_sections:
-        save_cross_section_plots(df_interfaces_interp, df_velocity_interp, "dispersion_dict",
+        save_cross_section_plots(df_interfaces_interp, df_velocity_interp, dispersion_dict,
                                  settings_synthetics.n_cells, settings_synthetics.n_cells,
                                  str(Path(make_synthetics.path_out_format_1)),
-                                 fixed_coord='y', coord_val=y_section)
+                                 fixed_coord='y', coord_val=y_section,
+                                 vel_last_layer=settings_synthetics.vel_last_layer,
+                                 mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km)
