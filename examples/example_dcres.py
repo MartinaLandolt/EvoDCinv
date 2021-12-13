@@ -127,7 +127,10 @@ if __name__ == "__main__":
             dc_calculated = th.pick(modes=ind_ray)
             if dtype == "group":
                 for dcurve in dc_calculated:
-                    dcurve.dtype = dtype
+                    try:
+                        dcurve.dtype = dtype
+                    except:
+                        dc_calculated = th.pick(modes=ind_ray)
             rcurves_best.append(dc_calculated)
         for nb_modes in ind_ray:
             filename = "%s/rayleigh_bestDC_mode%d.txt" % (outdir, nb_modes)
@@ -135,13 +138,16 @@ if __name__ == "__main__":
 
     if "love" in wtypes:
         lcurves_best = []
-        for l in lay_best:
+        for ind_love_model, l in enumerate(lay_best):
             th = ThomsonHaskell(l, wtype="love")
             th.propagate(f, ny=ny, domain="fc", n_threads=args.num_threads)
             dc_calculated = th.pick(modes=ind_love)
             if dtype == "group":
                 for dcurve in dc_calculated:
-                    dcurve.dtype = dtype
+                    try:
+                        dcurve.dtype = dtype
+                    except:
+                        dc_calculated = th.pick(modes=ind_love)
             lcurves_best.append(dc_calculated)
         for nb_modes in ind_love:
             filename = "%s/love_bestDC_mode%d.txt" % (outdir, nb_modes)
@@ -321,7 +327,12 @@ if __name__ == "__main__":
             dc_calculated = th.pick(modes=ind_ray)
             if dtype == "group":
                 for dcurve in dc_calculated:
-                    dcurve.dtype = dtype
+                    try:
+                        dcurve.dtype = dtype
+                    except:
+                        dc_calculated = th.pick(modes=ind_ray)
+                    if dcurve.flag_stop:
+                        dc_calculated = th.pick(modes=ind_ray)
             rcurves.append(dc_calculated)
         pickle.dump(rcurves, open("%s/rcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
 
