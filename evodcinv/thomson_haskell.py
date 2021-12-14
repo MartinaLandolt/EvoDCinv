@@ -174,7 +174,7 @@ class ThomsonHaskell:
                         dcurve[j].append(x)
                         faxis[j].append(f)
 
-                if (n_mode_new > len(modes) + 1):
+                if n_mode_new > len(modes) + 1:
                     # cut the panel above the mode mode_max_requested + 1
                     i_max_search = min(idx[len(modes)] + 2, self._panel.shape[0] - 1)
                     # update everything

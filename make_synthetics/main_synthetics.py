@@ -366,7 +366,7 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
                     print('debug')
 
         cell_count += 1
-        # print('cell ', cell_count, ' out of ', len(df_velocity_global))
+        print('cell ', cell_count, ' out of ', len(df_velocity_global))
 
     return dispersion_dict
 
@@ -381,7 +381,7 @@ def save_h5(dispersion_dict, file_out):
         dispersion_array = dispersion_dict["".join(['mode_', str(mode)])]
         nan_test = np.sum(~np.isnan(dispersion_array), axis=1)
         # create the MissingSamples
-        mask = (nan_test < 0.5*len(freq)).astype('int')
+        mask = (nan_test < len(freq)).astype('int')
         # create the uncertainties
         vel_uncert = dispersion_array * 0.01
         # resize
@@ -594,7 +594,8 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
             ax.set_title("".join(['Dispersion curves along section at ',
                                   fixed_coord, ' = ', "{:.1f}".format(coord_val_true/1000), ' km']))
             plt.grid(True, which='major', linestyle='-')
-        plt.legend(h_plot_list, str_legend)
+        plt.legend(h_plot_list, str_legend, bbox_to_anchor=(1.05, 1))
+        plt.tight_layout()
         fig.savefig(str(path_data.joinpath('dispersion_curves_along_section_' +
                                            "".join([fixed_coord + "{:.1f}".format(coord_val / 1000) + 'km']) +
                                            '.png')))
@@ -715,17 +716,20 @@ if __name__ == '__main__':
 
     df_velocity_interp = replace_velocities_by_mean_values_except_layer1(df_velocity_interp)
 
-    save_model_plots(df_interfaces_interp, 'interface',
-                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                     str(Path(make_synthetics.path_out_format_1)))
+    if settings_synthetics.plot_interfaces:
+        save_model_plots(df_interfaces_interp, 'interface',
+                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                         str(Path(make_synthetics.path_out_format_1)))
 
-    save_model_plots(df_thickness_interp, 'thickness',
-                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                     str(Path(make_synthetics.path_out_format_1)))
+    if settings_synthetics.plot_thicknesses:
+        save_model_plots(df_thickness_interp, 'thickness',
+                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                         str(Path(make_synthetics.path_out_format_1)))
 
-    save_model_plots(df_velocity_interp, 'velocity',
-                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                     str(Path(make_synthetics.path_out_format_1)))
+    if settings_synthetics.plot_velocities:
+        save_model_plots(df_velocity_interp, 'velocity',
+                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                         str(Path(make_synthetics.path_out_format_1)))
 
     # select only points where all values are well defined
     # df_thickness_valid = df_thickness_interp[~df_thickness_interp.isnull().any(axis=1)]
@@ -742,21 +746,23 @@ if __name__ == '__main__':
     file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
     dict_h5_list = save_h5(dispersion_dict, file_out)
 
-    save_dispersion_plots(dispersion_dict, 'mode_0',
-                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                     str(Path(make_synthetics.path_out_format_1)))
+    if settings_synthetics.plot_dispersion_maps:
+        save_dispersion_plots(dispersion_dict, 'mode_0',
+                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                         str(Path(make_synthetics.path_out_format_1)))
 
-    for x_section in settings_synthetics.x_cross_sections:
-        save_cross_section_plots(df_interfaces_interp, df_velocity_interp, dispersion_dict,
-                                 settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                 str(Path(make_synthetics.path_out_format_1)),
-                                 fixed_coord='x', coord_val=x_section,
-                                 vel_last_layer=settings_synthetics.vel_last_layer,
-                                 mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km)
-    for y_section in settings_synthetics.y_cross_sections:
-        save_cross_section_plots(df_interfaces_interp, df_velocity_interp, dispersion_dict,
-                                 settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                 str(Path(make_synthetics.path_out_format_1)),
-                                 fixed_coord='y', coord_val=y_section,
-                                 vel_last_layer=settings_synthetics.vel_last_layer,
-                                 mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km)
+    if settings_synthetics.plot_cross_sections:
+        for x_section in settings_synthetics.x_cross_sections:
+            save_cross_section_plots(df_interfaces_interp, df_velocity_interp, dispersion_dict,
+                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                     str(Path(make_synthetics.path_out_format_1)),
+                                     fixed_coord='x', coord_val=x_section,
+                                     vel_last_layer=settings_synthetics.vel_last_layer,
+                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km)
+        for y_section in settings_synthetics.y_cross_sections:
+            save_cross_section_plots(df_interfaces_interp, df_velocity_interp, dispersion_dict,
+                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                     str(Path(make_synthetics.path_out_format_1)),
+                                     fixed_coord='y', coord_val=y_section,
+                                     vel_last_layer=settings_synthetics.vel_last_layer,
+                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km)

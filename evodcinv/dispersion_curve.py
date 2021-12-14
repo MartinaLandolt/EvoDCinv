@@ -9,6 +9,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from scipy.interpolate import interp1d
 import h5py
     
 __all__ = [ "DispersionCurve" ]
@@ -179,8 +180,9 @@ class DispersionCurve:
             fmin = faxis[0] ; fmax = faxis[-1]
             df = 0.01
             tmp_faxis = np.arange(fmin, fmax+df, df)
-            tmp_phase_velocity = np.interp(tmp_faxis, faxis, phase_velocity)
-
+            # tmp_phase_velocity = np.interp(tmp_faxis, faxis, phase_velocity)
+            fun_interp = interp1d(faxis, phase_velocity, kind='cubic', fill_value="extrapolate")
+            tmp_phase_velocity = fun_interp(tmp_faxis)
             # omega = 2*np.pi*faxis
             omega = 2 * np.pi * tmp_faxis
             domega = omega[1] - omega[0]
@@ -188,15 +190,17 @@ class DispersionCurve:
                 raise ValueError("""Frequencies not evenly spaced. 
                        Could not convert from phase velocity to group velocity""")
             dphase_domega = np.gradient(tmp_phase_velocity, domega)
-            #group_velocity = phase_velocity  + omega * dphase_domega
+            # group_velocity_tmp = tmp_phase_velocity + omega * dphase_domega
             group_velocity_tmp = tmp_phase_velocity / (1 - omega/tmp_phase_velocity * dphase_domega)
-            diff_vg = np.diff(group_velocity_tmp)
-            diff_vg = np.hstack((diff_vg, diff_vg[-1]))
-            flag_stop = np.max(np.abs(diff_vg[faxis > 1])) > 100
-            # if flag_stop:
-            #     print('debug')
+
             #Interpolate velocity on faxis from the phase_velocity
             group_velocity = np.interp(faxis, tmp_faxis, group_velocity_tmp)
+
+            diff_vg = np.diff(group_velocity)
+            diff_vg = np.hstack((diff_vg, diff_vg[-1]))
+            flag_stop = np.max(np.abs(diff_vg[faxis > 1])) > 100
+            if flag_stop:
+                print('warning: strong ripples detected in group velocity. maybe increase ny')
 
             self.group_velocity = group_velocity
             self.dtype = 'group'

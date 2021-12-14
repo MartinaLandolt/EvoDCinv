@@ -37,7 +37,7 @@ path_paths = config["PATHS"]
 type_vel_model = int(path_paths["type_vel_model"])
 
 path_vel = config["VELOCITY_MODEL"]
-vp_over_vs = int(path_vel["vp_over_vs"])
+vp_over_vs = float(path_vel["vp_over_vs"])
 vel_last_layer = float(path_vel["vel_last_layer"])
 bounds_mode = str(path_vel["bounds_mode"])
 xmin = float(path_vel["xmin"])
