@@ -198,9 +198,13 @@ class DispersionCurve:
 
             diff_vg = np.diff(group_velocity)
             diff_vg = np.hstack((diff_vg, diff_vg[-1]))
-            flag_stop = np.max(np.abs(diff_vg[faxis > 1])) > 100
-            if flag_stop:
-                print('warning: strong ripples detected in group velocity. maybe increase ny')
+            # if max(faxis) > 5:
+            #     flag_stop = np.max(np.abs(diff_vg[faxis > 5])) > 100
+            #     if flag_stop:
+            #         print('warning: strong ripples detected in group velocity. maybe increase ny.')
+            # else:
+            #     flag_stop = True
+
 
             self.group_velocity = group_velocity
             self.dtype = 'group'

@@ -411,7 +411,7 @@ def save_h5(dispersion_dict, file_out):
     return dict_h5_list
 
 
-def save_model_plots(df_data, name_data, n_cells_x, n_cells_y, folder_out):
+def save_model_plots(df_data, name_data, n_cells_x, n_cells_y, folder_out, vp_over_vs=None):
     """writes the following pngs :
     - Z of horizons
     - H of horizons

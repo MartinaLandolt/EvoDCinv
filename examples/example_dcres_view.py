@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     # Parameters
     fmin, fmax = 0.1, 10.
-    skip = 1 #50
+    skip = 100 #50
     zmax = 1500
     data_dir = input_name
     outdir = "output/" + output_name # Output directory

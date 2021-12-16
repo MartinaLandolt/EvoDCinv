@@ -35,3 +35,4 @@ examples/test_sub
 output/
 make_synthetics/synthetics_chemery
 make_synthetics/model_chemery
+examples/output
