@@ -144,27 +144,45 @@ class ThomsonHaskell:
         dcurve = [ [] for m in modes ]
         faxis = [ [] for m in modes ]
 
-        n_mode = 0                              # mode counter
+        n_mode = 0                              # mode counter (vertical)
+        # n_sign_change_horz = 0                  # sign change counter (horizonal)
         count_jump = 0                          # counter of new modes appearing in the panel since
                                                 # the last detection of a lacking mode
         i_max_search = self._panel.shape[0]     # index to cut the panel for mode detection only in useful range
         for i, f in enumerate(self._faxis):
+            # top_line = self._panel[i_max_search-1, :i]                  # extract panel top line
+                                                                        # to count modes along x (for QC checks)
+            # if i > 0:
+                # idx_line = np.where((np.sign(top_line[:-1]) *
+                #                 np.sign(top_line[1:])) < 0.)[0]
             tmp = self._panel[:i_max_search, i] / \
-                  np.abs(np.nanmax(self._panel[:i_max_search, i]))      # extract panel column
+                  np.abs(np.nanmax(self._panel[:i_max_search, i]))      # extract panel last column
             idx = np.where((np.sign(tmp[:-1]) *
                             np.sign(tmp[1:])) < 0.)[0]                  # detect sign changes = modes
+
+            if len(idx) > 1:
+                if min(np.diff(idx)) < 2:
+                    print('Warning: some of potentially useful modes have only one pixel width. Increase ny.')
+
             tmp_non_nan = tmp[~np.isnan(tmp)]
             sgn = np.sign(tmp_non_nan[-1])                              # store sign on the top of the panel
                                                                         # (useful for detecting when a new mode enters)
             if i == 0:
                 sgn0 = sgn                                              # initialize sign
-            n_mode_new = len(idx)                                       # count detected modes
+                idx_previous = idx                                      # store previous list of mode detections
+            n_mode_new = len(idx)                                       # count detected modes (vertically)
+            # if i > 0:
+            #     n_sign_change_new_horz = len(idx_line)
+            # else:
+            #     n_sign_change_new_horz = 1
             condition1 = n_mode_new > (n_mode + count_jump)
                         # new number of modes is greater than previous
             condition2 = (sgn == sgn0) & (n_mode_new == n_mode + count_jump)
                         # new number of modes is equal to the previous
                         # and the sign at the top of the panel hasn't changed
-            regular_situation_condition = condition1 | condition2
+            condition3 = (sgn != sgn0) & (n_mode_new < n_mode)
+                        # case when there is an inversion of velocity and phase velocity increases (after local min)
+            regular_situation_condition = condition1 | condition2 | condition3
             if regular_situation_condition:
                 for j, m in enumerate(modes):
                     if len(idx) >= m+1:

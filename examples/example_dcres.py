@@ -211,8 +211,8 @@ if __name__ == "__main__":
     #energy=energy/inc_value
     apost = np.exp(-0.5*energy**2)
     threshold = perc * apost.max()
-    idx = np.where(apost > threshold)[0]
-    # idx = np.where(energy < 1)[0]
+    #idx = np.where(apost > threshold)[0]
+    idx = np.where(energy < 2)[0]
     models = models[idx]
     energy = energy[idx]
     apost = apost[idx]
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     fig1.patch.set_alpha(0.)
     ax = fig1.add_subplot(1, 1, 1)
     ax.plot(x, p)
-    ax.hist(diff_vel, normed=True)
+    ax.hist(diff_vel)
     plim = ax.get_ylim()
     ax.plot(np.ones(len(plim)) * x[indx_minus1sig], [0, plim[1]], '--r', lw=2)
     ax.plot(np.ones(len(plim)) * x[indx_plus1sig], [0, plim[1]], '--r', lw=2, label="Good fitting model limits")
@@ -332,8 +332,10 @@ if __name__ == "__main__":
                         dcurve.dtype = dtype
                     except:
                         dc_calculated = th.pick(modes=ind_ray)
-                    if dcurve.flag_stop:
-                        dc_calculated = th.pick(modes=ind_ray)
+                    # if i == 1593:
+                    #     dc_calculated = th.pick(modes=ind_ray)
+                    # if dcurve.flag_stop:
+                    #     dc_calculated = th.pick(modes=ind_ray)
             rcurves.append(dc_calculated)
         pickle.dump(rcurves, open("%s/rcurves.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
 
