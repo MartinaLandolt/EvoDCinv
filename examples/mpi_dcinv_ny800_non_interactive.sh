@@ -2,7 +2,7 @@
 
 # MPI Parameters
 MPIEXEC="mpiexec"
-EXEC="python example_dcinv.py"
+EXEC="python example_dcinv_ny800.py"
 
 # Command
 #read -p "Number of MPI process: " num_procs

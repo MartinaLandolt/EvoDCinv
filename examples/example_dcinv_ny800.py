@@ -43,7 +43,7 @@ if __name__ == "__main__":
     data_dir = parser.parse_args().input_name
         
     # Parameters
-    ny = 200                        # Number of velocity discretization points
+    ny = 800 #200                        # Number of velocity discretization points
     max_run = 10                    # Number of runs
     popsize = 20
     max_iter = 200

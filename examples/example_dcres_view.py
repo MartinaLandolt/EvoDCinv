@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     # Parameters
     fmin, fmax = 0.1, 10.
-    skip = 1 #50
+    skip = 100
     zmax = 1500
     data_dir = input_name
     outdir = "output/" + output_name # Output directory
@@ -190,7 +190,7 @@ if __name__ == "__main__":
     ax1.plot(model_moy[:, 1], model_moy[:, 0], color='magenta', label='mean model')
     ax1.fill_betweenx(model_min[:, 0], model_min[:, 1], model_max[:, 1], alpha=0.2)
 
-    ax1.legend()
+    ax1.legend(loc='upper right')
     ax1.set_xlabel("Velocity (m/s)", fontsize=12)
     ax1.set_ylabel("Depth (m)", fontsize=12)
     ax1.set_ylim(a[0], a[-1])
@@ -205,7 +205,7 @@ if __name__ == "__main__":
     ax1_bis.plot(model_moy[:, 1], model_moy[:, 0], color='magenta', label='mean model')
     ax1_bis.plot(bestVs_ax,bestThickness_ax, color='blue', label='best model')
     ax1_bis.fill_betweenx(model_min[:, 0], model_min[:, 1], model_max[:, 1], alpha=0.2, label='range of models')
-    ax1_bis.legend()
+    ax1_bis.legend(loc='upper right')
     ax1_bis.set_xlabel("Velocity (m/s)", fontsize=12)
     ax1_bis.set_ylabel("Depth (m)", fontsize=12)
     ax1_bis.set_ylim(a[0], a[-1])
