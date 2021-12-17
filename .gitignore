@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 make_synthetics/__pycache__
+make_synthetics/model_chemery/
+make_synthetics/synthetics_chemery/
 
 
 # C extensions
@@ -19,12 +21,18 @@ qsub_mpi_dcinv.sh.e*
 qsub_mpi_dcinv.sh.o*
 qsub_mpi_fast_dcinv.sh.e*
 qsub_mpi_fast_dcinv.sh.o*
+qsub_mpi_dcinv_ny200.sh.e*
+qsub_mpi_dcinv_ny200.sh.o*
+qsub_mpi_dcinv_ny800.sh.e*
+qsub_mpi_dcinv_ny800.sh.o*
 
 # Specific folders:
 logfiles/
 build/
 .idea/
 make_synthetics/.idea
+examples/data/synth_chemery_group/
+examples/data/synth_chemery_phase/
 
 # PBS related files
 examples/test.sh

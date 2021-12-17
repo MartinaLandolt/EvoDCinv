@@ -210,7 +210,7 @@ class DispersionCurve:
             self.dtype = 'group'
             self.dtype_velocity = group_velocity
             #REMOOOVE AFTER DEBUG
-            self.flag_stop = flag_stop
+            #self.flag_stop = flag_stop
         else :
             raise ValueError("""dipersion curve to small (empty or only one value) to convert to groupe velocity""")
 
