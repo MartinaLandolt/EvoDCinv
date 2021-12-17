@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import make_synthetics
 from make_synthetics import settings_synthetics
 from pathlib import Path
@@ -383,7 +385,7 @@ def save_h5(dispersion_dict, file_out):
         # create the MissingSamples
         mask = (nan_test < len(freq)).astype('int')
         # create the uncertainties
-        vel_uncert = dispersion_array * 0.01
+        vel_uncert = dispersion_array * 0.03
         # resize
         disp_curves = np.reshape(dispersion_array,
                                  (settings_synthetics.n_cells, settings_synthetics.n_cells, len(freq)))

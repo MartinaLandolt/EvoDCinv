@@ -96,6 +96,7 @@ if __name__ == "__main__":
         print("Maximum iteration = %i" % max_iter)
         print("Number of runs = %i" % max_run)
         print("Wave type of the data = %s" % dtype)
+        print("Number of velocity discretization points, ny = %i" % ny)
         starttime = time.time()
         os.makedirs(outdir, exist_ok=True)
         progress(-1, max_run, "perc", prefix="Inverting dispersion curves: ")
