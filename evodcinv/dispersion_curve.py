@@ -181,25 +181,30 @@ class DispersionCurve:
             df = 0.01
             tmp_faxis = np.arange(fmin, fmax+df, df)
             # tmp_phase_velocity = np.interp(tmp_faxis, faxis, phase_velocity)
-            fun_interp = interp1d(faxis, phase_velocity, kind='cubic', fill_value="extrapolate")
-            tmp_phase_velocity = fun_interp(tmp_faxis)
-            # omega = 2*np.pi*faxis
-            omega = 2 * np.pi * tmp_faxis
-            domega = omega[1] - omega[0]
-            if not np.allclose(np.diff(omega), domega, rtol=10**-2):
-                raise ValueError("""Frequencies not evenly spaced. 
-                       Could not convert from phase velocity to group velocity""")
-            dphase_domega = np.gradient(tmp_phase_velocity, domega)
-            # group_velocity_tmp = tmp_phase_velocity + omega * dphase_domega
-            group_velocity_tmp = tmp_phase_velocity / (1 - omega/tmp_phase_velocity * dphase_domega)
+            if len(faxis)>=4:
+                fun_interp = interp1d(faxis, phase_velocity, kind='cubic', fill_value="extrapolate")
+                tmp_phase_velocity = fun_interp(tmp_faxis)
+                # omega = 2*np.pi*faxis
+                omega = 2 * np.pi * tmp_faxis
+                domega = omega[1] - omega[0]
+                if not np.allclose(np.diff(omega), domega, rtol=10**-2):
+                    raise ValueError("""Frequencies not evenly spaced. 
+                           Could not convert from phase velocity to group velocity""")
+                dphase_domega = np.gradient(tmp_phase_velocity, domega)
+                # group_velocity_tmp = tmp_phase_velocity + omega * dphase_domega
+                group_velocity_tmp = tmp_phase_velocity / (1 - omega/tmp_phase_velocity * dphase_domega)
 
-            #Interpolate velocity on faxis from the phase_velocity
-            group_velocity = np.interp(faxis, tmp_faxis, group_velocity_tmp)
+                #Interpolate velocity on faxis from the phase_velocity
+                group_velocity = np.interp(faxis, tmp_faxis, group_velocity_tmp)
+            else:
+                group_velocity = np.nan * faxis
 
-            diff_vg = np.diff(group_velocity)
-            diff_vg = np.hstack((diff_vg, diff_vg[-1]))
-            # if max(faxis) > 5:
-            #     flag_stop = np.max(np.abs(diff_vg[faxis > 5])) > 100
+            # diff_vg = np.diff(group_velocity)
+            # diff_vg = np.hstack((diff_vg, diff_vg[-1]))
+            # fmin_scan = 2
+            # max_tol_jump = 100
+            # if max(faxis) > fmin_scan:
+            #     flag_stop = np.max(np.abs(diff_vg[faxis > fmin_scan])) > max_tol_jump
             #     if flag_stop:
             #         print('warning: strong ripples detected in group velocity. maybe increase ny.')
             # else:

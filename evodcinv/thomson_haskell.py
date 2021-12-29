@@ -149,6 +149,7 @@ class ThomsonHaskell:
         count_jump = 0                          # counter of new modes appearing in the panel since
                                                 # the last detection of a lacking mode
         i_max_search = self._panel.shape[0]     # index to cut the panel for mode detection only in useful range
+        # print('initial i_max_search = ',i_max_search)
         for i, f in enumerate(self._faxis):
             # top_line = self._panel[i_max_search-1, :i]                  # extract panel top line
                                                                         # to count modes along x (for QC checks)
@@ -160,9 +161,9 @@ class ThomsonHaskell:
             idx = np.where((np.sign(tmp[:-1]) *
                             np.sign(tmp[1:])) < 0.)[0]                  # detect sign changes = modes
 
-            if len(idx) > 1:
-                if min(np.diff(idx)) < 2:
-                    print('Warning: some of potentially useful modes have only one pixel width. Increase ny.')
+            # if len(idx) > 1:
+            #     if min(np.diff(idx)) < 2:
+            #         print('Warning: some of potentially useful modes have only one pixel width. Increase ny.')
 
             tmp_non_nan = tmp[~np.isnan(tmp)]
             sgn = np.sign(tmp_non_nan[-1])                              # store sign on the top of the panel

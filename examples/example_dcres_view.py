@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     # Parameters
     fmin, fmax = 0.1, 10.
-    skip = 100
+    skip = 10
     zmax = 1500
     data_dir = input_name
     outdir = "output/" + output_name # Output directory
@@ -122,7 +122,7 @@ if __name__ == "__main__":
     model_min = np.loadtxt('%s/min_models.txt' % outdir, unpack=True)
     model_max = np.loadtxt('%s/max_models.txt' % outdir, unpack=True)
 
-    #Import best model
+    # Import best model
     best_model = pickle.load(open("%s/best_model_rms.pickle" % outdir, "rb"))
     n = int(len(best_model) / 3)
     bestVs_ax = []
@@ -130,6 +130,7 @@ if __name__ == "__main__":
         bestVs_ax.extend([best_model[i], best_model[i]])
     bestThickness_ax = []
     thickness = 0
+
     for i in range(n):
         bestThickness_ax.extend([thickness, thickness+best_model[n+i]])
         thickness = thickness+best_model[n+i]

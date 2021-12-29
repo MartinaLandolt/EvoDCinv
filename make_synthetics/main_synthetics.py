@@ -335,6 +335,9 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
     dispersion_dict['f_axis'] = f
     dispersion_dict['X'] = df_velocity_global['X']
     dispersion_dict['Y'] = df_velocity_global['Y']
+    nb_layers_max = len(set(df_velocity_global)) - 2 + 1    # minus 'X' and 'Y' columns, plus infinite half space
+    dispersion_dict['true_model'] = np.nan * np.zeros((len(df_velocity_global), nb_layers_max, 4))
+
     for mode in modes:
         dispersion_dict["".join(['mode_', str(mode)])] = np.nan * np.zeros((len(df_velocity_global), nb_f))
 
@@ -351,6 +354,8 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
                 make_1d_model_for_cell(thickness_array, velocity_array, last_layer_vel=vel_last_layer)
             l = convert_1d_model_to_th_format(velocity_array_clean, thickness_array_clean,
                                               vp_over_vs_ratio=vp_over_vs_ratio)
+            dispersion_dict['true_model'][cell_count, 0:l.shape[0], :] = l
+
             try:
                 dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
             except:
@@ -377,9 +382,14 @@ def save_h5(dispersion_dict, file_out):
     # resize coordinates to mesh format
     x_mesh = np.reshape(dispersion_dict['X'].values, (settings_synthetics.n_cells, settings_synthetics.n_cells))
     y_mesh = np.reshape(dispersion_dict['Y'].values, (settings_synthetics.n_cells, settings_synthetics.n_cells))
+    freq = dispersion_dict['f_axis']
+    true_model = dispersion_dict['true_model']
+    true_model_reshape = np.reshape(true_model, (settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                                 true_model.shape[1], true_model.shape[2]))
+    dispersion_dict['wavetype']
+    dispersion_dict['velocity_mode']
     dict_h5_list = []
     for mode in dispersion_dict['modes']:
-        freq = dispersion_dict['f_axis']
         dispersion_array = dispersion_dict["".join(['mode_', str(mode)])]
         nan_test = np.sum(~np.isnan(dispersion_array), axis=1)
         # create the MissingSamples
@@ -392,7 +402,9 @@ def save_h5(dispersion_dict, file_out):
         mask = np.reshape(mask, (settings_synthetics.n_cells, settings_synthetics.n_cells,))
         vel_uncert = np.reshape(vel_uncert, (settings_synthetics.n_cells, settings_synthetics.n_cells, len(freq)))
         # write to h5 file
-        file_out_mode = "".join([file_out, '_mode_', str(mode), '.h5'])
+        file_out_mode = "".join([file_out, '_',
+                                 dispersion_dict['wavetype'], '_', dispersion_dict['velocity_mode'],
+                                 '_mode_', str(mode), '.h5'])
         with h5py.File(file_out_mode, "w") as fout:
             fout.create_dataset("Frequency", data=freq)
             fout.create_dataset("DispersionCurve", data=disp_curves)
@@ -400,13 +412,19 @@ def save_h5(dispersion_dict, file_out):
             fout.create_dataset("MissingSamples", data=mask)
             fout.create_dataset("X_coord", data=x_mesh)
             fout.create_dataset("Y_coord", data=y_mesh)
+            fout.create_dataset("true_model", data=true_model_reshape)
+            fout.attrs["wavetype"] = dispersion_dict['wavetype']
+            fout.attrs["velocity_mode"] = dispersion_dict['velocity_mode']
 
         dict_h5={'Frequency':freq,
                 'DispersionCurve':disp_curves,
                 'Uncertainties':vel_uncert,
                 'MissingSamples':mask,
                 'X_coord':x_mesh,
-                'Y_coord':y_mesh}
+                'Y_coord':y_mesh,
+                'true_model':true_model_reshape,
+                'wavetype':dispersion_dict['wavetype'],
+                'velocity_mode':dispersion_dict['velocity_mode']}
 
         dict_h5_list.append(dict_h5)
 

@@ -4,6 +4,7 @@ __pycache__/
 make_synthetics/__pycache__
 make_synthetics/model_chemery/
 make_synthetics/synthetics_chemery/
+make_synthetics/synthetics_chemery_old/
 
 
 # C extensions
@@ -33,6 +34,7 @@ build/
 make_synthetics/.idea
 examples/data/synth_chemery_group/
 examples/data/synth_chemery_phase/
+examples/data_custom
 
 # PBS related files
 examples/test.sh

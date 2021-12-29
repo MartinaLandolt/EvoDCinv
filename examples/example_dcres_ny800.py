@@ -211,8 +211,8 @@ if __name__ == "__main__":
     #energy=energy/inc_value
     apost = np.exp(-0.5*energy**2)
     threshold = perc * apost.max()
-    #idx = np.where(apost > threshold)[0]
-    idx = np.where(energy < n_sigma_keep)[0]
+    idx = np.where(apost > threshold)[0]
+    #idx = np.where(energy < n_sigma_keep)[0]
     models = models[idx]
     energy = energy[idx]
     apost = apost[idx]
