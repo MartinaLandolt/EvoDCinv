@@ -64,6 +64,7 @@ n_layers = str(path_solver_params["n_layers"])
 ny = int(path_solver_params["ny"])
 
 path_plot_opts = config["PLOT_OPTIONS"]
+compare_cps = str_to_bool(path_plot_opts["compare_cps"])
 plot_interfaces = str_to_bool(path_plot_opts["plot_interfaces"])
 plot_thicknesses = str_to_bool(path_plot_opts["plot_thicknesses"])
 plot_velocities = str_to_bool(path_plot_opts["plot_velocities"])

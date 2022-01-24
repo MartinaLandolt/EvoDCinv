@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 from scipy.interpolate import griddata
 from evodcinv import LayeredModel, ThomsonHaskell, params2lay
+from make_synthetics.cps_plugin import get_cps_dispersion
 import pyproj
 from pyproj import CRS
 from pyproj import Transformer
@@ -321,8 +322,53 @@ def get_dispersion_curve(l, f_axis, ny, modes, wavetype, velocity_mode):
     return dc_calculated
 
 
+def compare_to_cps(l, f_axis, ny, modes, wavetype, fig_name):
+    """ function to compare Thomson Haskell & CPS forward predictions """
+    dc_calculated = get_dispersion_curve(l, f_axis, ny, modes, wavetype, 'group')
+    src_dir = Path(__file__).parent.resolve()
+    tmp_folder = Path(src_dir).joinpath('tmp_cps_from_evodcinv')
+    if wavetype == 'rayleigh':
+        cps_wavetype = 'R'
+    elif wavetype == 'love':
+        cps_wavetype = 'L'
+    nmod = max(modes)
+    cps_results = get_cps_dispersion(l, f_axis, nmod, cps_wavetype, tmp_folder)
+    fig_folder = tmp_folder.joinpath('figs_out')
+    if not fig_folder.exists():
+        fig_folder.mkdir()
+    dict_compare = dict()
+    for (i, mode) in enumerate(modes):
+        f_axis_evo = dc_calculated[i].faxis
+        c_evo = dc_calculated[i].phase_velocity
+        u_evo = dc_calculated[i].group_velocity
+        field_cps = cps_wavetype + str(mode)
+        f_axis_cps = 1./cps_results[field_cps]['T']
+        c_cps = cps_results[field_cps]['C'] * 1000
+        u_cps = cps_results[field_cps]['U'] * 1000
+        dict_mode = dict()
+        for variable in ["f_axis_evo", "c_evo", "u_evo",
+                         "f_axis_cps", "c_cps", "u_cps"]:
+            dict_mode[variable] = eval(variable)
+        dict_compare[field_cps] = dict_mode
+        fig, ax = plt.subplots(1)
+        ax.plot(f_axis_cps, c_cps, color='k', linestyle='--')
+        ax.plot(f_axis_evo, c_evo, color='k')
+        ax.plot(f_axis_cps, u_cps, color='r', linestyle='--')
+        ax.plot(f_axis_evo, u_evo, color='r')
+        plt.legend(['phase cps', 'phase evo', 'group cps', 'group evo'])
+        plt.grid()
+        plt.xlabel('Frequency (Hz)')
+        plt.ylabel('m/s')
+        plt.title(field_cps)
+        figname_generic = field_cps
+        figname_full = figname_generic + fig_name + '.png'
+        fig_path = Path(fig_folder).joinpath(figname_full)
+        fig.savefig(fig_path)
+        plt.close(fig)
+
 def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
-                  fmin, fmax, nb_f, wavetype, modes, velocity_mode, ny, vel_last_layer):
+                  fmin, fmax, nb_f, wavetype, modes, velocity_mode, ny,
+                  vel_last_layer, bool_compare_to_cps=False):
 
     # set common frequency axis
     f = np.linspace(fmin, fmax, nb_f)
@@ -356,10 +402,13 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
                                               vp_over_vs_ratio=vp_over_vs_ratio)
             dispersion_dict['true_model'][cell_count, 0:l.shape[0], :] = l
 
-            try:
-                dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
-            except:
-                dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
+            # try:
+            if compare_to_cps:
+                fig_name = '_cell_' + str(i) + '_' + str(j)
+                compare_to_cps(l, f, ny, modes, wavetype, fig_name)
+            dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
+            # except:
+            #     dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
 
             # write in the array
             for mode in modes:
@@ -761,7 +810,8 @@ if __name__ == '__main__':
                   settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
                   settings_synthetics.wavetype, settings_synthetics.modes,
                   settings_synthetics.velocity_mode, settings_synthetics.ny,
-                  settings_synthetics.vel_last_layer)
+                  settings_synthetics.vel_last_layer,
+                                    bool_compare_to_cps=settings_synthetics.compare_cps)
 
     file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
     dict_h5_list = save_h5(dispersion_dict, file_out)
