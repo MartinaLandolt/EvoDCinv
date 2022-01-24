@@ -5,6 +5,7 @@ make_synthetics/__pycache__
 make_synthetics/model_chemery/
 make_synthetics/synthetics_chemery/
 make_synthetics/synthetics_chemery_old/
+make_synthetics/tmp_cps_from_evodcinv
 
 
 # C extensions
