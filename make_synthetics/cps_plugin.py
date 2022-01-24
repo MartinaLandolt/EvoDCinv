@@ -15,7 +15,7 @@ def execbash(script, tmpdir):
     return stdout, stderr
     
     
-def initiate_surf96(mod96file, tmp_dir, freq, nmod):
+def initiate_surf96(mod96file, tmp_dir, freq, nmod, wavetypes):
     
     script='rm %s %s %s' % ('dispersion_points*','sobs.d','srfker96.txt');
     execbash(script, tmp_dir)
@@ -24,7 +24,7 @@ def initiate_surf96(mod96file, tmp_dir, freq, nmod):
     filename_path = str(tmp_dir.joinpath(filename))
     mod_array=range(nmod+1)
     with open(filename_path, 'w') as fid:
-        for wavetype in 'LR':
+        for wavetype in wavetypes:
             for mod in mod_array:
                 for parameter in 'CU':
                     for i_f in range(len(freq)):
@@ -32,8 +32,8 @@ def initiate_surf96(mod96file, tmp_dir, freq, nmod):
                         fid.write('SURF96 %s %s X %d %f %f %f\n' %
                         (wavetype, parameter, mod, T, 1.0, 1.0))
                     fid.write('\n')
-    u_inc=0.005
-    hask_inc=0.005
+    u_inc=0.00000001
+    hask_inc=0.00000001
     
     #------------------- write bash script   
     script = """
@@ -66,7 +66,7 @@ def initiate_surf96(mod96file, tmp_dir, freq, nmod):
 
 def launch_surf96(mod96file, tmp_dir, freq, nmod, wavetype, fig = None, cleanup = False):
     #------------------- initiate
-    initiate_surf96(mod96file, tmp_dir, freq, nmod)
+    initiate_surf96(mod96file, tmp_dir, freq, nmod, wavetype)
     #------------------- prepare script
     script = """
     surf96 1
@@ -141,7 +141,7 @@ def launch_disp96_egn96_der96(mod96file, wavetype, nmod, freq, tmpdir = None, fi
     assert os.path.exists(str(mod96file_path))
     assert wavetype in 'RL'
     assert nmod >= 0
-    assert freq > 0.0
+    assert freq.all() > 0.0
 
     #------------------- create temporary directory
     if tmpdir is None:
@@ -155,41 +155,49 @@ def launch_disp96_egn96_der96(mod96file, wavetype, nmod, freq, tmpdir = None, fi
             tmpdir += "_%10d" % (np.random.rand() * 1.0e10)
         os.mkdir(tmpdir)
 
+    #------------------- write file with frequencies
+    filename_farr=str(Path(tmpdir).joinpath('FARR.dat'))
+    with open(filename_farr, 'w') as fid:
+        for i_f in range(len(freq)):
+            f_value=freq[i_f]
+            fid.write('%f\n' %(f_value))
+
     #------------------- write bash script   
     script = """
-    #rm -f DISTFILE.dst sdisp96.??? s[l,r]egn96.??? S[L,R]DER.PLT S[R,L]DER.TXT
+        #rm -f DISTFILE.dst sdisp96.??? s[l,r]egn96.??? S[L,R]DER.PLT S[R,L]DER.TXT FARR.dat
 
-    cat << END > DISTFILE.dst 
-    10. 0.125 256 -1.0 6.0
-    END
+        cat << END > DISTFILE.dst 
+        10. 0.125 256 -1.0 6.0
+        END
 
-    ln -s {mod96file} model.mod96
-    
-    ############################### prepare dispersion
-    sprep96 -M model.mod96 -dfile DISTFILE.dst -NMOD {nmodmax} -{wavetype} -FREQ {freq}
+        ln -s {mod96file} model.mod96
 
-    ############################### run dispersion
-    sdisp96
+        ############################### prepare dispersion
+        sprep96 -M model.mod96 -dfile DISTFILE.dst -NMOD {nmodmax} -{wavetype} -FARR FARR.dat
 
-    ############################### compute eigenfunctions
-    s{minuswavetype}egn96 -DE 
+        ############################### run dispersion
+        sdisp96
 
-    ############################### ouput eigenfunctions
-    sdpder96 -{wavetype} -TXT  # plot and ascii output
+        ############################### compute eigenfunctions
+        s{minuswavetype}egn96 -DE 
 
-    ############################### clean up
-    #rm -f sdisp96.dat DISTFILE.dst sdisp96.??? s[l,r]egn96.??? S[L,R]DER.PLT
+        ############################### ouput eigenfunctions
+        sdpder96 -{wavetype} -TXT  # plot and ascii output
 
-    """.format(mod96file = mod96file,
-               nmodmax = nmod + 1, 
-               wavetype = wavetype, 
-               minuswavetype = wavetype.lower(),
-               freq = freq) # no brackets & round to 2 decimals
+        ############################### clean up
+        #rm -f sdisp96.dat DISTFILE.dst sdisp96.??? s[l,r]egn96.??? S[L,R]DER.PLT FARR.dat
+
+        """.format(mod96file=mod96file,
+                   nmodmax=nmod + 1,
+                   wavetype=wavetype,
+                   minuswavetype=wavetype.lower()) # no brackets & round to 2 decimals
     script = "\n".join([_.strip() for _ in script.split('\n')]) #remove indentation from script
 
     #------------------- execute bash commands
     stdout, stderr = execbash(script, tmpdir = tmpdir)
-    expected_output = "%s/S%sDER.TXT" % (tmpdir, wavetype)
+    filename_out = "S%sDER.TXT" % (wavetype)
+    expected_output = str(Path(tmpdir).joinpath(filename_out))
+    # "%s/S%sDER.TXT" % (tmpdir, wavetype)
     if not os.path.exists(expected_output):
         raise Exception('output file %s not found, script failed \n%s' % (expected_output, stderr))
 
@@ -199,6 +207,8 @@ def launch_disp96_egn96_der96(mod96file, wavetype, nmod, freq, tmpdir = None, fi
         #remove temporary directory
         #execbash('rm -rf %s' % tmpdir, ".")
         execbash('rm *', tmpdir)
+
+    return out
 
 
 def read_TXTout_surf96(fin):
@@ -503,10 +513,10 @@ def get_cps_dispersion(l, f_axis, nmod, wavetype, tmp_folder='~/tmp_cps_from_evo
     writemod96(mod96file_path, H, VP, VS, RHO)
     
     # run surf96
-    # cps_results = launch_disp96_egn96_der96(
-    #     mod96file, wavetype, nmod, f_axis, tmp_folder)
+    cps_results = launch_disp96_egn96_der96(
+        mod96file, wavetype, nmod, f_axis, tmp_folder)
     # fig = plt.figure()
-    cps_results = launch_surf96(mod96file, tmp_folder, f_axis, nmod, wavetype, cleanup=True)
+    # cps_results = launch_surf96(mod96file, tmp_folder, f_axis, nmod, wavetype, cleanup=False)
     return cps_results
 
 
