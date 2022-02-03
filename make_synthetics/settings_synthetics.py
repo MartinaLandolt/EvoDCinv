@@ -35,6 +35,7 @@ config.read(settings_path)
 # Start unwrapping
 path_paths = config["PATHS"]
 type_vel_model = int(path_paths["type_vel_model"])
+tomo_folder = str(path_paths["tomo_folder"])
 
 path_vel = config["VELOCITY_MODEL"]
 vp_over_vs = ast.literal_eval(path_vel["vp_over_vs"])

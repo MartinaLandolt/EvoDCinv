@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
+import pickle
 import make_synthetics
 from make_synthetics import settings_synthetics
+from make_synthetics.tomo_plugin import *
 from pathlib import Path
 import glob
 import pandas as pd
@@ -14,10 +16,26 @@ from pyproj import CRS
 from pyproj import Transformer
 import h5py
 from scipy.signal import medfilt2d
+from scipy.spatial import ConvexHull, Delaunay
 import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 plt.ioff()
+
+
+def in_hull(p, hull):
+    """
+    Test if points in `p` are in `hull`
+
+    `p` should be a `NxK` coordinates of `N` points in `K` dimensions
+    `hull` is either a scipy.spatial.Delaunay object or the `MxK` array of the
+    coordinates of `M` points in `K`dimensions for which Delaunay triangulation
+    will be computed
+    """
+    if not isinstance(hull, Delaunay):
+        hull = Delaunay(hull)
+
+    return hull.find_simplex(p)>=0
 
 def remove_first_digit(x):
     """in order to remove the front "2" digit in Lambert II Y coordinate"""
@@ -714,6 +732,130 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
                                            '.png')))
 
 
+def save_dispersion_plots_along_with_tomo_outputs(dispersion_dict, field, n_cells_x, n_cells_y, folder_out, n_skip=1,
+                                                  tomo_folder=None, plot_mode='relative'):
+    """plot group velocity maps and compare with tomo results"""
+
+    assert dispersion_dict['velocity_mode'] == 'group'
+
+    x = dispersion_dict['X'].values/1000
+    y = dispersion_dict['Y'].values/1000
+    coords_synthetics = np.vstack((x, y)).T
+    x_mesh = np.reshape(x, (n_cells_y, n_cells_x))   # convert to km
+    y_mesh = np.reshape(y, (n_cells_y, n_cells_x))  # convert to km
+
+    if field in list(dispersion_dict):
+        path_data = Path(folder_out).joinpath(field + '_plots')
+    else:
+        raise Exception("".join(['unknown mode: ', field]))
+
+    if plot_mode == 'relative':
+        str_cbar = dispersion_dict['velocity_mode'] + ' relative anomaly'
+    else:
+        str_cbar = dispersion_dict['velocity_mode'] + ' velocity (m/s)'
+
+    if not path_data.exists():
+        path_data.mkdir()
+
+    vals_all = dispersion_dict[field]
+    faxis = dispersion_dict['f_axis']
+
+    # read tomo results in a dictionnary
+    pattern = 'pass_2*'
+    dict_tomo_global = read_tomo_files_h5(tomo_folder, pattern)
+
+    # define a convex envelope of valid data
+    f_tomo_str = dict_tomo_global.keys()
+    f_tomo = [float(f_str) for f_str in f_tomo_str]
+    for (i, freq_str) in enumerate(f_tomo_str):
+        dict_freq = dict_tomo_global[freq_str]
+        if i==0:
+            reference_point = dict_freq['reference_frame']/1000
+            X_mesh = dict_freq['X_mesh']/1000 + reference_point[0]
+            Y_mesh = dict_freq['Y_mesh']/1000 + reference_point[1]
+            vel_anom_non_nan = ~np.isnan(dict_freq['velocity_anomaly']).T
+        else:
+            vel_anom_non_nan += ~np.isnan(dict_freq['velocity_anomaly']).T
+
+    vel_anom_non_nan_reshape = np.reshape(vel_anom_non_nan, len(np.ravel(vel_anom_non_nan)))
+    X_mesh_reshape = np.reshape(X_mesh, len(np.ravel(vel_anom_non_nan)))
+    Y_mesh_reshape = np.reshape(Y_mesh, len(np.ravel(vel_anom_non_nan)))
+    points_valid = np.vstack((X_mesh_reshape[vel_anom_non_nan_reshape], Y_mesh_reshape[vel_anom_non_nan_reshape])).T
+    x_min = np.min(points_valid[:, 0]) - 0.5
+    x_max = np.max(points_valid[:, 0]) + 0.5
+    y_min = np.min(points_valid[:, 1]) - 0.5
+    y_max = np.max(points_valid[:, 1]) + 0.5
+    # plot maps of velocity per frequency
+
+    # loop on frequencies from tomo dictionnary
+    for (i, freq_str) in enumerate(f_tomo_str):
+        dict_freq = dict_tomo_global[freq_str]
+        f = float(freq_str)
+        # check the synthetics dictionnary contains
+        # the desired frequency to within some tolerance
+        i_f_synth = np.where(np.abs(faxis - f) < 0.01)[0]
+        if len(i_f_synth) > 0:
+            # get group velocity values for synthetics
+            f_synth = faxis[i_f_synth[0]]
+            z = vals_all[:, i_f_synth[0]]
+
+            # replace values outside the polygon by nans
+            i_valid = in_hull(coords_synthetics, points_valid)
+            z[i_valid == False] = np.nan
+
+            # read velocity anomalies from tomo dict (corresponding to f)
+            vel_anom_tomo = - dict_freq['velocity_anomaly'].T
+            vel_ref_tomo = dict_freq['apriori_velocity']
+
+            # if mode is relative, convert synthetics to anomaly, or the other way
+            if plot_mode == 'relative':
+                vel_ref_synth = np.nanmean(z)
+                vel_synth_plot = (z - vel_ref_synth)/vel_ref_synth
+                vel_tomo_plot = vel_anom_tomo
+            else:
+                vel_synth_plot = z
+                vel_tomo_plot = (vel_anom_tomo + 1) * vel_ref_tomo
+            vel_synth_plot_mesh = np.reshape(vel_synth_plot, (n_cells_y, n_cells_x))
+
+            # define common value bounds
+            val_min = min(np.nanmin(np.ravel(vel_tomo_plot)), np.nanmin(np.ravel(vel_synth_plot)))
+            val_max = max(np.nanmax(np.ravel(vel_tomo_plot)), np.nanmax(np.ravel(vel_synth_plot)))
+
+            # create figure with 2 subplots
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+
+            # plot synthetics
+            h_im1 = ax1.pcolormesh(x_mesh, y_mesh, vel_synth_plot_mesh)
+            h_im1.set_clim(val_min, val_max)
+            ax1.grid(True, which='major', linestyle='-')
+            ax1.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+            ax1.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+            ax1.set_xlim(x_min, x_max)
+            ax1.set_ylim(y_min, y_max)
+            ax1.set_aspect('equal', 'box')
+            ax1.set_title("".join(["Synthetics, f = ", "{:.2f}".format(f_synth), ' Hz']))
+            ax1.set_xlabel('X (km)')
+            ax1.set_ylabel('Y (km)')
+            h_cbar1 = plt.colorbar(mappable=h_im1, ax=ax1)
+
+            # plot tomo results
+            h_im2 = ax2.pcolormesh(X_mesh, Y_mesh, vel_tomo_plot)
+            h_im2.set_clim(val_min, val_max)
+            ax2.grid(True, which='major', linestyle='-')
+            ax2.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+            ax2.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+            ax2.set_title("".join(["Tomography, f = ", "{:.2f}".format(f), ' Hz']))
+            ax2.set_xlim(x_min, x_max)
+            ax2.set_ylim(y_min, y_max)
+            ax2.set_aspect('equal', 'box')
+            ax2.set_xlabel('X (km)')
+            ax2.set_ylabel('Y (km)')
+            h_cbar2 = plt.colorbar(mappable=h_im2, ax=ax2)
+            h_cbar2.ax.set_ylabel(str_cbar, rotation=270)
+
+            fig.savefig(str(path_data.joinpath("".join(["{:.2f}".format(f), '_Hz_', plot_mode]))) + '.png')
+            plt.close(fig)
+
 
 def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y, folder_out, n_skip=1):
     x = dispersion_dict['X'].values
@@ -770,6 +912,13 @@ def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y, folder_o
 
 
 if __name__ == '__main__':
+
+    recompute_dispersion = True
+    reload_interfaces = True
+
+    if recompute_dispersion:
+        assert reload_interfaces
+
     print('model format : ', settings_synthetics.type_vel_model)
     if settings_synthetics.type_vel_model == 1:
         path_model_in = make_synthetics.data_format_1
@@ -779,98 +928,118 @@ if __name__ == '__main__':
         if not Path(path_synthetics_out).exists():
             Path(path_synthetics_out).mkdir()
 
-    # get number of layers
-    if settings_synthetics.n_layers == 'auto':
-        n_interfaces, n_layers = get_interface_number_fmt1(path_model_in)
-    else:
-        raise Exception("User-fixed layer number not yet supported. Number of layers should be auto")
+    if reload_interfaces:
+        # get number of layers
+        if settings_synthetics.n_layers == 'auto':
+            n_interfaces, n_layers = get_interface_number_fmt1(path_model_in)
+        else:
+            raise Exception("User-fixed layer number not yet supported. Number of layers should be auto")
 
-    # read model
-    df_vp_global, df_interfaces_global, dx_in, dy_in = \
-        read_model_fmt1(path_model_in, n_interfaces)
-    df_thickness_global = compute_thickness(df_interfaces_global, df_vp_global)
+        # read model
+        df_vp_global, df_interfaces_global, dx_in, dy_in = \
+            read_model_fmt1(path_model_in, n_interfaces)
+        df_thickness_global = compute_thickness(df_interfaces_global, df_vp_global)
 
-    # make manual edits as suggested by specialist of chémery
-    df_vp_global = edit_velocities_as_suggested_by_catherine(df_vp_global)
+        # make manual edits as suggested by specialist of chémery
+        df_vp_global = edit_velocities_as_suggested_by_catherine(df_vp_global)
 
-    # select only points where all the horizons are well defined
-    df_interfaces_valid = df_interfaces_global[~df_interfaces_global.isnull().any(axis=1)]
-    df_thickness_valid = df_thickness_global[~df_interfaces_global.isnull().any(axis=1)]
-    df_vp_valid = df_vp_global[~df_interfaces_global.isnull().any(axis=1)]
+        # select only points where all the horizons are well defined
+        df_interfaces_valid = df_interfaces_global[~df_interfaces_global.isnull().any(axis=1)]
+        df_thickness_valid = df_thickness_global[~df_interfaces_global.isnull().any(axis=1)]
+        df_vp_valid = df_vp_global[~df_interfaces_global.isnull().any(axis=1)]
 
-    # interpolate on desired grid
-    if settings_synthetics.bounds_mode=='auto':
-        xmin = df_vp_valid['X'].min()
-        ymin = df_vp_valid['Y'].min()
-        xmax = df_vp_valid['X'].max()
-        ymax = df_vp_valid['Y'].max()
-    elif settings_synthetics.bounds_mode=='manual':
-        xmin = settings_synthetics.xmin
-        ymin = settings_synthetics.ymin
-        xmax = settings_synthetics.xmax
-        ymax = settings_synthetics.ymax
-    else:
-        raise Exception('unknown bounds_mode value')
+        # interpolate on desired grid
+        if settings_synthetics.bounds_mode=='auto':
+            xmin = df_vp_valid['X'].min()
+            ymin = df_vp_valid['Y'].min()
+            xmax = df_vp_valid['X'].max()
+            ymax = df_vp_valid['Y'].max()
+        elif settings_synthetics.bounds_mode=='manual':
+            xmin = settings_synthetics.xmin
+            ymin = settings_synthetics.ymin
+            xmax = settings_synthetics.xmax
+            ymax = settings_synthetics.ymax
+        else:
+            raise Exception('unknown bounds_mode value')
 
-    df_vp_valid = remove_outliers(df_vp_valid, std_thresh=2)
+        df_vp_valid = remove_outliers(df_vp_valid, std_thresh=2)
 
-    df_vp_interp = interpolate_model_per_layer(df_vp_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
-                                                     n_cells=settings_synthetics.n_cells,
-                                                     lateral_smooth=settings_synthetics.lateral_smooth,
-                                                     smooth_length=settings_synthetics.smooth_length,
-                                                     dx_in=dx_in, dy_in=dy_in)
-    df_interfaces_interp = interpolate_model_per_layer(df_interfaces_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
-                                                     n_cells=settings_synthetics.n_cells,
-                                                     lateral_smooth=settings_synthetics.lateral_smooth,
-                                                     smooth_length=settings_synthetics.smooth_length,
-                                                     dx_in=dx_in, dy_in=dy_in)
+        df_vp_interp = interpolate_model_per_layer(df_vp_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
+                                                         n_cells=settings_synthetics.n_cells,
+                                                         lateral_smooth=settings_synthetics.lateral_smooth,
+                                                         smooth_length=settings_synthetics.smooth_length,
+                                                         dx_in=dx_in, dy_in=dy_in)
+        df_interfaces_interp = interpolate_model_per_layer(df_interfaces_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
+                                                         n_cells=settings_synthetics.n_cells,
+                                                         lateral_smooth=settings_synthetics.lateral_smooth,
+                                                         smooth_length=settings_synthetics.smooth_length,
+                                                         dx_in=dx_in, dy_in=dy_in)
 
-    df_thickness_interp = compute_thickness(df_interfaces_interp, df_vp_interp)
+        df_thickness_interp = compute_thickness(df_interfaces_interp, df_vp_interp)
 
-    df_vp_interp = replace_velocities_by_mean_values_except_layer1(df_vp_interp)
-    df_vs_interp, df_vp_over_vs_interp = apply_vp_over_vs_ratio_on_dataframe(df_vp_interp,
-                                                       vp_over_vs_ratio=settings_synthetics.vp_over_vs,
-                                                       n_layers_vp_over_vs=settings_synthetics.n_layers_vp_over_vs)
+        df_vp_interp = replace_velocities_by_mean_values_except_layer1(df_vp_interp)
+        df_vs_interp, df_vp_over_vs_interp = apply_vp_over_vs_ratio_on_dataframe(df_vp_interp,
+                                                           vp_over_vs_ratio=settings_synthetics.vp_over_vs,
+                                                           n_layers_vp_over_vs=settings_synthetics.n_layers_vp_over_vs)
 
-    if settings_synthetics.plot_interfaces:
-        save_model_plots(df_interfaces_interp, 'interface',
-                         settings_synthetics.n_cells, settings_synthetics.n_cells,
-                         str(Path(make_synthetics.path_out_format_1)))
+        if settings_synthetics.plot_interfaces:
+            save_model_plots(df_interfaces_interp, 'interface',
+                             settings_synthetics.n_cells, settings_synthetics.n_cells,
+                             str(Path(make_synthetics.path_out_format_1)))
 
-    if settings_synthetics.plot_thicknesses:
-        save_model_plots(df_thickness_interp, 'thickness',
-                         settings_synthetics.n_cells, settings_synthetics.n_cells,
-                         str(Path(make_synthetics.path_out_format_1)))
+        if settings_synthetics.plot_thicknesses:
+            save_model_plots(df_thickness_interp, 'thickness',
+                             settings_synthetics.n_cells, settings_synthetics.n_cells,
+                             str(Path(make_synthetics.path_out_format_1)))
 
-    if settings_synthetics.plot_velocities:
-        save_model_plots(df_vp_interp, 'vs',
-                         settings_synthetics.n_cells, settings_synthetics.n_cells,
-                         str(Path(make_synthetics.path_out_format_1)))
+        if settings_synthetics.plot_velocities:
+            save_model_plots(df_vp_interp, 'vs',
+                             settings_synthetics.n_cells, settings_synthetics.n_cells,
+                             str(Path(make_synthetics.path_out_format_1)))
 
-    # select only points where all values are well defined
-    # df_thickness_valid = df_thickness_interp[~df_thickness_interp.isnull().any(axis=1)]
-    # df_vp_valid = df_vp_interp[~df_thickness_interp.isnull().any(axis=1)]
+        # select only points where all values are well defined
+        # df_thickness_valid = df_thickness_interp[~df_thickness_interp.isnull().any(axis=1)]
+        # df_vp_valid = df_vp_interp[~df_thickness_interp.isnull().any(axis=1)]
+
 
     # compute dispersion curves
-    nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
-    dispersion_dict = loop_on_cells(df_vp_interp, df_thickness_interp,
-                                    settings_synthetics.vp_over_vs,
-                                    settings_synthetics.n_layers_vp_over_vs,
-                  settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
-                  settings_synthetics.wavetype, settings_synthetics.modes,
-                  settings_synthetics.velocity_mode, settings_synthetics.ny,
-                  settings_synthetics.vel_last_layer,
-                                    bool_compare_to_cps=settings_synthetics.compare_cps)
-
     file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
-    dict_h5_list = save_h5(dispersion_dict, file_out)
+    nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
+    if recompute_dispersion:
+        dispersion_dict = loop_on_cells(df_vp_interp, df_thickness_interp,
+                                        settings_synthetics.vp_over_vs,
+                                        settings_synthetics.n_layers_vp_over_vs,
+                      settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
+                      settings_synthetics.wavetype, settings_synthetics.modes,
+                      settings_synthetics.velocity_mode, settings_synthetics.ny,
+                      settings_synthetics.vel_last_layer,
+                                        bool_compare_to_cps=settings_synthetics.compare_cps)
+
+        dict_h5_list = save_h5(dispersion_dict, file_out)
+        with open(file_out + '.pickle', 'wb') as f1:
+            pickle.dump(dispersion_dict, f1, protocol=pickle.HIGHEST_PROTOCOL)
+    else:
+        with open(file_out + '.pickle', 'rb') as f1:
+            dispersion_dict = pickle.load(f1)
 
     if settings_synthetics.plot_dispersion_maps:
-        save_dispersion_plots(dispersion_dict, 'mode_0',
-                         settings_synthetics.n_cells, settings_synthetics.n_cells,
-                         str(Path(make_synthetics.path_out_format_1)))
+        # save_dispersion_plots(dispersion_dict, 'mode_0',
+        #                  settings_synthetics.n_cells, settings_synthetics.n_cells,
+        #                  str(Path(make_synthetics.path_out_format_1)))
 
-    if settings_synthetics.plot_cross_sections:
+        save_dispersion_plots_along_with_tomo_outputs(dispersion_dict, 'mode_0',
+                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                         str(Path(make_synthetics.path_out_format_1)), n_skip=1,
+                                                      tomo_folder=settings_synthetics.tomo_folder,
+                                                      plot_mode='relative')
+
+        save_dispersion_plots_along_with_tomo_outputs(dispersion_dict, 'mode_0',
+                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                         str(Path(make_synthetics.path_out_format_1)), n_skip=1,
+                                                      tomo_folder=settings_synthetics.tomo_folder,
+                                                      plot_mode='absolute')
+
+    if settings_synthetics.plot_cross_sections & reload_interfaces :
         for x_section in settings_synthetics.x_cross_sections:
             save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
