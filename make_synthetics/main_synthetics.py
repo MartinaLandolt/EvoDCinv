@@ -289,23 +289,55 @@ def interpolate_model_per_layer(df_in, xmin=None, xmax=None, ymin=None, ymax=Non
     return df_out
 
 
-def make_1d_model_for_cell(thickness_array_in, vp_array_in, last_layer_vel=6000, last_layer_thickness=99999.):
+def make_1d_model_for_cell(thickness_array_in, vp_array_in, vs_array_in,
+                           last_layer_vp=6000,  last_vp_over_vs=2, last_layer_thickness=99999.,
+                           min_thickness_tol=1):
     """ ignores layers thinner than 10 m """
-    thickness_array_out = np.hstack((thickness_array_in[thickness_array_in > 10], last_layer_thickness))
-    vp_array_out = np.hstack((vp_array_in[thickness_array_in > 10], last_layer_vel))
+    thickness_array_out = np.hstack((thickness_array_in[thickness_array_in > min_thickness_tol], last_layer_thickness))
+    vp_array_out = np.hstack((vp_array_in[thickness_array_in > min_thickness_tol], last_layer_vp))
+    vs_array_out = np.hstack((vs_array_in[thickness_array_in > min_thickness_tol], last_layer_vp/last_vp_over_vs))
     if max(vp_array_out) <= 0:
         raise Exception('Encountered non-strictly positive velocity after removing zero-thickness layers')
-    return thickness_array_out, vp_array_out
+    return thickness_array_out, vp_array_out, vs_array_out
 
 
-def convert_1d_model_to_th_format(vp_array, thickness_array,
-                           vp_over_vs_ratio=2):
+def apply_vp_over_vs_ratio(vp_array, vp_over_vs_ratio=[2], n_layers_vp_over_vs=[]):
+    assert len(vp_over_vs_ratio) == len(n_layers_vp_over_vs) + 1
+    vs_array = 1 / vp_over_vs_ratio[-1] * vp_array
+    # apply vp/vs per layers
+    n_cum = 0
+    for (i, n) in enumerate(n_layers_vp_over_vs):
+        vs_array[n_cum: n_cum + n] = 1 / vp_over_vs_ratio[i] * vp_array[n_cum: n_cum+n]
+        n_cum = n_cum + n
+
+    return vs_array
+
+
+def apply_vp_over_vs_ratio_on_dataframe(df_vp, vp_over_vs_ratio=[2], n_layers_vp_over_vs=[]):
+    assert len(vp_over_vs_ratio) == len(n_layers_vp_over_vs) + 1
+    df_vs = df_vp.copy()
+    df_vp_over_vs = df_vp.copy()
+    df_vs.iloc[:, 2:] = 1 / vp_over_vs_ratio[-1] * df_vp.iloc[:, 2:]
+    # apply vp/vs per layers
+    n_cum = 0
+    for (i, n) in enumerate(n_layers_vp_over_vs):
+        df_vs.iloc[:, 2 + n_cum: 2 + n_cum + n] = 1 / vp_over_vs_ratio[i] * \
+                                           df_vp.iloc[:, 2 + n_cum: 2 + n_cum + n]
+        n_cum = n_cum + n
+
+    df_vp_over_vs.iloc[:, 2:] = df_vp.iloc[:, 2:] / df_vs.iloc[:, 2:]
+
+    return df_vs, df_vp_over_vs
+
+def convert_1d_model_to_th_format(vp_array, vs_array, thickness_array):
+
     nb_layers = len(vp_array)
     # create model in single line
     m = np.nan*np.zeros(nb_layers*3)
-    m[0 : nb_layers] = 1/vp_over_vs_ratio * vp_array
+    m[0 : nb_layers] = vs_array
     m[nb_layers : 2*nb_layers] = thickness_array
-    m[2*nb_layers : 3*nb_layers] = vp_over_vs_ratio
+    m[2*nb_layers : 3*nb_layers] = vp_array/vs_array
+
     # convert to model usable with Thomson-Haskell
     l = params2lay(m)
 
@@ -366,7 +398,7 @@ def compare_to_cps(l, f_axis, ny, modes, wavetype, fig_name):
         fig.savefig(fig_path)
         plt.close(fig)
 
-def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
+def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_layers_vp_over_vs,
                   fmin, fmax, nb_f, wavetype, modes, velocity_mode, ny,
                   vel_last_layer, bool_compare_to_cps=False):
 
@@ -391,19 +423,23 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio,
     for (i, df_velocity_cell), (j, df_thickness_cell) in zip(df_velocity_global.iterrows(),
                                                                   df_thickness_global.iterrows()):
         thickness_array = df_thickness_cell.iloc[2:].values
-        velocity_array = df_velocity_cell.iloc[2:].values
-        if np.isnan(velocity_array).any():
+        vp_array = df_velocity_cell.iloc[2:].values
+        vs_array = apply_vp_over_vs_ratio(vp_array,
+                                              vp_over_vs_ratio=vp_over_vs_ratio,
+                                              n_layers_vp_over_vs=n_layers_vp_over_vs)
+        if np.isnan(vp_array).any():
             for mode in modes:
                 dispersion_dict["".join(['mode_', str(mode)])][cell_count, :] = np.nan
         else:
-            thickness_array_clean, velocity_array_clean = \
-                make_1d_model_for_cell(thickness_array, velocity_array, last_layer_vel=vel_last_layer)
-            l = convert_1d_model_to_th_format(velocity_array_clean, thickness_array_clean,
-                                              vp_over_vs_ratio=vp_over_vs_ratio)
+            thickness_array_clean, vp_array_clean, vs_array_clean = \
+                make_1d_model_for_cell(thickness_array, vp_array, vs_array,
+                                       last_layer_vp=vel_last_layer,
+                                       last_vp_over_vs=vp_over_vs_ratio[-1])
+            l = convert_1d_model_to_th_format(vp_array_clean, vs_array_clean, thickness_array_clean)
             dispersion_dict['true_model'][cell_count, 0:l.shape[0], :] = l
 
             # try:
-            if compare_to_cps:
+            if bool_compare_to_cps:
                 fig_name = '_cell_' + str(i) + '_' + str(j)
                 compare_to_cps(l, f, ny, modes, wavetype, fig_name)
             dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
@@ -496,8 +532,10 @@ def save_model_plots(df_data, name_data, n_cells_x, n_cells_y, folder_out, vp_ov
     path_data = Path(folder_out).joinpath(name_data + '_plots')
     if name_data == 'interface':
         str_cbar = 'Depth bsl (m) '
-    elif name_data == 'velocity':
+    elif name_data == 'vp':
         str_cbar = 'Interval Vp (m/s)'
+    elif name_data == 'vs':
+        str_cbar = 'Interval Vs (m/s)'
     elif name_data == 'thickness':
         str_cbar = 'Interval thickness (m)'
     else:
@@ -530,7 +568,8 @@ def save_model_plots(df_data, name_data, n_cells_x, n_cells_y, folder_out, vp_ov
 def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cells_x, n_cells_y, folder_out,
                              fixed_coord='x', coord_val=None, dz=5,
                              z_margin_bottom=200, z_margin_top=20, vel_last_layer=None,
-                             delta_x_disp_curves=None, mode_field=None):
+                             delta_x_disp_curves=None, mode_field=None,
+                             data_type='vs'):
 
     path_data = Path(folder_out).joinpath('cross_section_plots')
     if not path_data.exists():
@@ -600,7 +639,12 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
         slice_section[np.where(z_axis > z_i_slice[j]), j] = vel_last_layer
     h_im = ax.pcolormesh(coord_axis/1000, z_axis, slice_section)
     h_cbar = plt.colorbar(mappable=h_im)
-    h_cbar.ax.set_ylabel('Interval Vp (m/s)', rotation=270)
+    if data_type == 'vs':
+        h_cbar.ax.set_ylabel('Interval Vs (m/s)', rotation=270)
+    elif data_type == 'vp':
+        h_cbar.ax.set_ylabel('Interval Vp (m/s)', rotation=270)
+    elif data_type == 'vp_over_vs':
+        h_cbar.ax.set_ylabel('Interval Vp/Vs', rotation=270)
     plt.grid(True, which='major', linestyle='-')
     ax.xaxis.set_major_formatter(FormatStrFormatter('%.0f'))
     ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
@@ -622,7 +666,7 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
             z_i_slice = z_i_reshape[i_cell, :].flatten()
         ax.plot(coord_axis / 1000, z_i_slice, color='k')
 
-    fig.savefig(str(path_data.joinpath('section_' +
+    fig.savefig(str(path_data.joinpath('section_' + data_type + '_' +
                 "".join([fixed_coord + str(coord_val / 1000) + 'km']) +
                 '.png')))
     plt.close(fig)
@@ -742,24 +786,24 @@ if __name__ == '__main__':
         raise Exception("User-fixed layer number not yet supported. Number of layers should be auto")
 
     # read model
-    df_velocity_global, df_interfaces_global, dx_in, dy_in = \
+    df_vp_global, df_interfaces_global, dx_in, dy_in = \
         read_model_fmt1(path_model_in, n_interfaces)
-    df_thickness_global = compute_thickness(df_interfaces_global, df_velocity_global)
+    df_thickness_global = compute_thickness(df_interfaces_global, df_vp_global)
 
     # make manual edits as suggested by specialist of chémery
-    df_velocity_global = edit_velocities_as_suggested_by_catherine(df_velocity_global)
+    df_vp_global = edit_velocities_as_suggested_by_catherine(df_vp_global)
 
     # select only points where all the horizons are well defined
     df_interfaces_valid = df_interfaces_global[~df_interfaces_global.isnull().any(axis=1)]
     df_thickness_valid = df_thickness_global[~df_interfaces_global.isnull().any(axis=1)]
-    df_velocity_valid = df_velocity_global[~df_interfaces_global.isnull().any(axis=1)]
+    df_vp_valid = df_vp_global[~df_interfaces_global.isnull().any(axis=1)]
 
     # interpolate on desired grid
     if settings_synthetics.bounds_mode=='auto':
-        xmin = df_velocity_valid['X'].min()
-        ymin = df_velocity_valid['Y'].min()
-        xmax = df_velocity_valid['X'].max()
-        ymax = df_velocity_valid['Y'].max()
+        xmin = df_vp_valid['X'].min()
+        ymin = df_vp_valid['Y'].min()
+        xmax = df_vp_valid['X'].max()
+        ymax = df_vp_valid['Y'].max()
     elif settings_synthetics.bounds_mode=='manual':
         xmin = settings_synthetics.xmin
         ymin = settings_synthetics.ymin
@@ -768,9 +812,9 @@ if __name__ == '__main__':
     else:
         raise Exception('unknown bounds_mode value')
 
-    df_velocity_valid = remove_outliers(df_velocity_valid, std_thresh=2)
+    df_vp_valid = remove_outliers(df_vp_valid, std_thresh=2)
 
-    df_velocity_interp = interpolate_model_per_layer(df_velocity_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
+    df_vp_interp = interpolate_model_per_layer(df_vp_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
                                                      n_cells=settings_synthetics.n_cells,
                                                      lateral_smooth=settings_synthetics.lateral_smooth,
                                                      smooth_length=settings_synthetics.smooth_length,
@@ -781,9 +825,12 @@ if __name__ == '__main__':
                                                      smooth_length=settings_synthetics.smooth_length,
                                                      dx_in=dx_in, dy_in=dy_in)
 
-    df_thickness_interp = compute_thickness(df_interfaces_interp, df_velocity_interp)
+    df_thickness_interp = compute_thickness(df_interfaces_interp, df_vp_interp)
 
-    df_velocity_interp = replace_velocities_by_mean_values_except_layer1(df_velocity_interp)
+    df_vp_interp = replace_velocities_by_mean_values_except_layer1(df_vp_interp)
+    df_vs_interp, df_vp_over_vs_interp = apply_vp_over_vs_ratio_on_dataframe(df_vp_interp,
+                                                       vp_over_vs_ratio=settings_synthetics.vp_over_vs,
+                                                       n_layers_vp_over_vs=settings_synthetics.n_layers_vp_over_vs)
 
     if settings_synthetics.plot_interfaces:
         save_model_plots(df_interfaces_interp, 'interface',
@@ -796,17 +843,19 @@ if __name__ == '__main__':
                          str(Path(make_synthetics.path_out_format_1)))
 
     if settings_synthetics.plot_velocities:
-        save_model_plots(df_velocity_interp, 'velocity',
+        save_model_plots(df_vp_interp, 'vs',
                          settings_synthetics.n_cells, settings_synthetics.n_cells,
                          str(Path(make_synthetics.path_out_format_1)))
 
     # select only points where all values are well defined
     # df_thickness_valid = df_thickness_interp[~df_thickness_interp.isnull().any(axis=1)]
-    # df_velocity_valid = df_velocity_interp[~df_thickness_interp.isnull().any(axis=1)]
+    # df_vp_valid = df_vp_interp[~df_thickness_interp.isnull().any(axis=1)]
 
     # compute dispersion curves
     nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
-    dispersion_dict = loop_on_cells(df_velocity_interp, df_thickness_interp, settings_synthetics.vp_over_vs,
+    dispersion_dict = loop_on_cells(df_vp_interp, df_thickness_interp,
+                                    settings_synthetics.vp_over_vs,
+                                    settings_synthetics.n_layers_vp_over_vs,
                   settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
                   settings_synthetics.wavetype, settings_synthetics.modes,
                   settings_synthetics.velocity_mode, settings_synthetics.ny,
@@ -823,16 +872,46 @@ if __name__ == '__main__':
 
     if settings_synthetics.plot_cross_sections:
         for x_section in settings_synthetics.x_cross_sections:
-            save_cross_section_plots(df_interfaces_interp, df_velocity_interp, dispersion_dict,
+            save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
+                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                     str(Path(make_synthetics.path_out_format_1)),
+                                     fixed_coord='x', coord_val=x_section,
+                                     vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
+                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                     data_type='vs')
+            save_cross_section_plots(df_interfaces_interp, df_vp_interp, dispersion_dict,
                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
                                      str(Path(make_synthetics.path_out_format_1)),
                                      fixed_coord='x', coord_val=x_section,
                                      vel_last_layer=settings_synthetics.vel_last_layer,
-                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km)
+                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                     data_type='vp')
+            save_cross_section_plots(df_interfaces_interp, df_vp_over_vs_interp, dispersion_dict,
+                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                     str(Path(make_synthetics.path_out_format_1)),
+                                     fixed_coord='x', coord_val=x_section,
+                                     vel_last_layer=settings_synthetics.vp_over_vs[-1],
+                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                     data_type='vp_over_vs')
         for y_section in settings_synthetics.y_cross_sections:
-            save_cross_section_plots(df_interfaces_interp, df_velocity_interp, dispersion_dict,
+            save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
+                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                     str(Path(make_synthetics.path_out_format_1)),
+                                     fixed_coord='y', coord_val=y_section,
+                                     vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
+                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                     data_type='vs')
+            save_cross_section_plots(df_interfaces_interp, df_vp_interp, dispersion_dict,
                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
                                      str(Path(make_synthetics.path_out_format_1)),
                                      fixed_coord='y', coord_val=y_section,
                                      vel_last_layer=settings_synthetics.vel_last_layer,
-                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km)
+                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                     data_type='vp')
+            save_cross_section_plots(df_interfaces_interp, df_vp_over_vs_interp, dispersion_dict,
+                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                     str(Path(make_synthetics.path_out_format_1)),
+                                     fixed_coord='y', coord_val=y_section,
+                                     vel_last_layer=settings_synthetics.vp_over_vs[-1],
+                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                     data_type='vp_over_vs')

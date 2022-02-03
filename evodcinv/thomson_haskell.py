@@ -42,7 +42,7 @@ class ThomsonHaskell:
         else:
             self._velocity_model = velocity_model
         ratio = velocity_model[:,0] / velocity_model[:,1]
-        if np.any(ratio < 1.4) or np.any(ratio > 2.6):
+        if np.any(ratio < 1.4) or np.any(ratio > 5):
             raise ValueError("non physical Vp/Vs ratio")
         if wtype not in self._WTYPE:
             raise ValueError("wtype must be in %s, got '%s'" % (self._WTYPE, wtype))
