@@ -676,7 +676,8 @@ def save_corss_section_plots_along_with_tomo_outputs(df_interfaces, dispersion_d
             ax.set_title("".join(['Dispersion curves along section at ',
                                   fixed_coord, ' = ', "{:.1f}".format(coord_val_true / 1000), ' km']))
             plt.grid(True, which='major', linestyle='-')
-    plt.legend(h_plot_list, str_legend, bbox_to_anchor=(1.05, 1))
+    #f_max_all = max(max(faxis), max(faxis_tomo))
+    plt.legend(h_plot_list, str_legend, bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
     fig.savefig(str(path_data.joinpath('dispersion_curves_along_section_compared' +
                                        "".join([fixed_coord + "{:.1f}".format(coord_val / 1000) + 'km']) +
@@ -688,7 +689,15 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
                              fixed_coord='x', coord_val=None, dz=5,
                              z_margin_bottom=200, z_margin_top=20, vel_last_layer=None,
                              delta_x_disp_curves=None, mode_field=None,
-                             data_type='vs'):
+                             data_type='vs',
+                             compare_tomo=False, dispersion_curves_tomo_file=None,
+                             clim_model=None, ylim_disp_curves=None):
+
+    if compare_tomo:
+        dict_disp_curves_tomo = h5_to_dict(str(dispersion_curves_tomo_file))
+        x_axis_tomo = dict_disp_curves_tomo['X_coord'][0, :]
+        y_axis_tomo = dict_disp_curves_tomo['Y_coord'][:, 0]
+        faxis_tomo = dict_disp_curves_tomo['Frequency']
 
     path_data = Path(folder_out).joinpath('cross_section_plots')
     if not path_data.exists():
@@ -771,6 +780,8 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
     ax.set_title(str_title)
     ax.set_xlabel(str_xlabel)
     ax.set_ylabel('Depth bsl (m)')
+    if clim_model is not None:
+        h_im.set_clim(clim_model)
     ax.invert_yaxis()
 
     # plot all the interfaces on top of the image
@@ -810,25 +821,58 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
                 coord_i_true = y_axis[i_other][0]
                 i_cell = np.where((dispersion_dict['X'] == coord_val_true) &
                                   (dispersion_dict['Y'] == coord_i_true))
+                if compare_tomo:
+                    dist_to_tomo_x = np.abs(x_axis_tomo - coord_val_true)
+                    dist_to_tomo_y = np.abs(y_axis_tomo - coord_i_true)
             else:
                 i_other = [i for i in range(len(x_axis)) if
                            np.abs(x_axis[i] - coord_i) == min(np.abs(x_axis - coord_i))]
                 coord_i_true = x_axis[i_other][0]
                 i_cell = np.where((dispersion_dict['Y'] == coord_val_true) &
                                   (dispersion_dict['X'] == coord_i_true))
-            disp_curve_i = vals_all[i_cell, :].flatten()
-            h_plot, = ax.plot(faxis, disp_curve_i, color=cmap(float(ii/len(coord_list_disp_curves))))
-            h_plot_list.append(h_plot)
-            # print(coord_i_true/1000)
-            str_legend.append("".join([other_coord, " = ", "{:.1f}".format(coord_i_true/1000), ' km']))
-            ax.set_ylabel(str_cbar, rotation=270)
-            ax.set_xlabel('Frequency (Hz)')
-            ax.set_title("".join(['Dispersion curves along section at ',
-                                  fixed_coord, ' = ', "{:.1f}".format(coord_val_true/1000), ' km']))
-            plt.grid(True, which='major', linestyle='-')
-        plt.legend(h_plot_list, str_legend, bbox_to_anchor=(1.05, 1))
+                if compare_tomo:
+                    dist_to_tomo_x = np.abs(x_axis_tomo - coord_i_true)
+                    dist_to_tomo_y = np.abs(y_axis_tomo - coord_val_true)
+            if compare_tomo:
+                # WARNING : transposed tomo output !!!
+                dist_to_tomo = np.sqrt(min(dist_to_tomo_x) ** 2 + min(dist_to_tomo_y) ** 2)
+                i_cell_tomo_x = np.where(dist_to_tomo_x == min(dist_to_tomo_x))
+                i_cell_tomo_y = np.where(dist_to_tomo_y == min(dist_to_tomo_y))
+                crit_cell_exists_in_tomo = \
+                    (dist_to_tomo < settings_synthetics.cell_size) & \
+                    (dict_disp_curves_tomo['MissingSamples'][i_cell_tomo_x, i_cell_tomo_y] == 0)
+            if (not compare_tomo) | crit_cell_exists_in_tomo:
+                disp_curve_i = vals_all[i_cell, :].flatten()
+                h_plot, = ax.plot(faxis, disp_curve_i, color=cmap(float(ii/len(coord_list_disp_curves))))
+                h_plot_list.append(h_plot)
+                # print(coord_i_true/1000)
+                str_legend.append("".join([other_coord, " = ", "{:.1f}".format(coord_i_true/1000), ' km']))
+                ax.set_ylabel(str_cbar, rotation=270)
+                ax.set_xlabel('Frequency (Hz)')
+                ax.set_title("".join(['Dispersion curves along section at ',
+                                      fixed_coord, ' = ', "{:.1f}".format(coord_val_true/1000), ' km']))
+                plt.grid(True, which='major', linestyle='-')
+                if compare_tomo:
+                    disp_curve_tomo = \
+                        dict_disp_curves_tomo['DispersionCurve'][i_cell_tomo_x, i_cell_tomo_y].squeeze()
+                    uncert_tomo = \
+                        dict_disp_curves_tomo['Uncertainties'][i_cell_tomo_x, i_cell_tomo_y].squeeze()
+                    ax.plot(faxis_tomo, disp_curve_tomo,
+                            color=cmap(float(ii / len(coord_list_disp_curves))),
+                            linestyle='--')
+                    # ax.errorbar(faxis_tomo, disp_curve_tomo, uncert_tomo,
+                    #                   color=cmap(float(ii / len(coord_list_disp_curves))),
+                    #                   linestyle='-')
+
+        plt.legend(h_plot_list, str_legend, bbox_to_anchor=(1.05, 1), loc='upper left')
+        if ylim_disp_curves is not None:
+            ax.set_ylim(ylim_disp_curves)
         plt.tight_layout()
-        fig.savefig(str(path_data.joinpath('dispersion_curves_along_section_' +
+        if compare_tomo:
+            fig_title = "dispersion_curves_along_section_compared"
+        else:
+            fig_title = "dispersion_curves_along_section"
+        fig.savefig(str(path_data.joinpath(fig_title +
                                            "".join([fixed_coord + "{:.1f}".format(coord_val / 1000) + 'km']) +
                                            '.png')))
         plt.close(fig)
@@ -1144,14 +1188,14 @@ if __name__ == '__main__':
 
     if settings_synthetics.plot_cross_sections & reload_interfaces:
         for x_section in settings_synthetics.x_cross_sections:
-            if settings_synthetics.compare_tomo:
-                save_corss_section_plots_along_with_tomo_outputs(df_interfaces_interp, dispersion_dict,
-                                                                 settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                                                 str(Path(make_synthetics.path_out_format_1)),
-                                                                 fixed_coord='x', coord_val=x_section,
-                                                                 delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-                                                                 mode_field='mode_0',
-                                                                     dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file))
+            # if settings_synthetics.compare_tomo:
+            #     save_corss_section_plots_along_with_tomo_outputs(df_interfaces_interp, dispersion_dict,
+            #                                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
+            #                                                      str(Path(make_synthetics.path_out_format_1)),
+            #                                                      fixed_coord='x', coord_val=x_section,
+            #                                                      delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+            #                                                      mode_field='mode_0',
+            #                                                          dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file))
 
 
             save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
@@ -1160,48 +1204,64 @@ if __name__ == '__main__':
                                      fixed_coord='x', coord_val=x_section,
                                      vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
                                      mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-                                     data_type='vs')
+                                     data_type='vs',
+                                     compare_tomo=settings_synthetics.compare_tomo,
+                                     dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file),
+                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                     clim_model=settings_synthetics.vs_bounds)
             save_cross_section_plots(df_interfaces_interp, df_vp_interp, dispersion_dict,
                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
                                      str(Path(make_synthetics.path_out_format_1)),
                                      fixed_coord='x', coord_val=x_section,
                                      vel_last_layer=settings_synthetics.vel_last_layer,
                                      mode_field='mode_0', delta_x_disp_curves=None,
-                                     data_type='vp')
+                                     data_type='vp',
+                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                     clim_model=settings_synthetics.vp_bounds)
             save_cross_section_plots(df_interfaces_interp, df_vp_over_vs_interp, dispersion_dict,
                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
                                      str(Path(make_synthetics.path_out_format_1)),
                                      fixed_coord='x', coord_val=x_section,
                                      vel_last_layer=settings_synthetics.vp_over_vs[-1],
                                      mode_field='mode_0', delta_x_disp_curves=None,
-                                     data_type='vp_over_vs')
+                                     data_type='vp_over_vs',
+                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                     clim_model=settings_synthetics.vp_over_vs_bounds)
         for y_section in settings_synthetics.y_cross_sections:
-            if settings_synthetics.compare_tomo:
-                save_corss_section_plots_along_with_tomo_outputs(df_interfaces_interp, dispersion_dict,
-                                                                 settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                                                 str(Path(make_synthetics.path_out_format_1)),
-                                                                 fixed_coord='y', coord_val=y_section,
-                                                                 delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-                                                                 mode_field='mode_0',
-                                                                 dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file))
+            # if settings_synthetics.compare_tomo:
+            #     save_corss_section_plots_along_with_tomo_outputs(df_interfaces_interp, dispersion_dict,
+            #                                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
+            #                                                      str(Path(make_synthetics.path_out_format_1)),
+            #                                                      fixed_coord='y', coord_val=y_section,
+            #                                                      delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+            #                                                      mode_field='mode_0',
+            #                                                      dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file))
             save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
                                      str(Path(make_synthetics.path_out_format_1)),
                                      fixed_coord='y', coord_val=y_section,
                                      vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
                                      mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-                                     data_type='vs')
+                                     data_type='vs',
+                                     compare_tomo=settings_synthetics.compare_tomo,
+                                     dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file),
+                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                     clim_model=settings_synthetics.vs_bounds)
             save_cross_section_plots(df_interfaces_interp, df_vp_interp, dispersion_dict,
                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
                                      str(Path(make_synthetics.path_out_format_1)),
                                      fixed_coord='y', coord_val=y_section,
                                      vel_last_layer=settings_synthetics.vel_last_layer,
                                      mode_field='mode_0', delta_x_disp_curves=None,
-                                     data_type='vp')
+                                     data_type='vp',
+                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                     clim_model=settings_synthetics.vp_bounds)
             save_cross_section_plots(df_interfaces_interp, df_vp_over_vs_interp, dispersion_dict,
                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
                                      str(Path(make_synthetics.path_out_format_1)),
                                      fixed_coord='y', coord_val=y_section,
                                      vel_last_layer=settings_synthetics.vp_over_vs[-1],
                                      mode_field='mode_0', delta_x_disp_curves=None,
-                                     data_type='vp_over_vs')
+                                     data_type='vp_over_vs',
+                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                     clim_model=settings_synthetics.vp_over_vs_bounds)
