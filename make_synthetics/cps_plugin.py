@@ -303,7 +303,7 @@ def read_TXTout_surf96(fin):
                             
                     else: raise Exception('error: unknown wavetype')
     for key, subkey in out.items():
-        if key is not 'model':
+        if key != 'model':
             for a, b in subkey.items():
                 if a not in ["T","C","U"]:
                     len_array=len(out[key][a])
@@ -425,7 +425,7 @@ def read_TXTout_egn17(fin):
                             
                     else: raise Exception('error: unknown wavetype')
     for key, subkey in out.items():
-        if key is not 'model':
+        if key != 'model':
             for a, b in subkey.items():
                 if a not in ["T","C","U","AR","GAMMA","ZREF"]:
                     len_array=len(out[key][a])
