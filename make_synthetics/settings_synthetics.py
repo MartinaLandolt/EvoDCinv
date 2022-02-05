@@ -35,7 +35,11 @@ config.read(settings_path)
 # Start unwrapping
 path_paths = config["PATHS"]
 type_vel_model = int(path_paths["type_vel_model"])
+compare_tomo = str_to_bool(path_paths["compare_tomo"])
+recompute_dispersion = str_to_bool(path_paths["recompute_dispersion"])
+reload_interfaces = str_to_bool(path_paths["reload_interfaces"])
 tomo_folder = str(path_paths["tomo_folder"])
+dispersion_curves_tomo_file = str(path_paths["dispersion_curves_tomo_file"])
 
 path_vel = config["VELOCITY_MODEL"]
 vp_over_vs = ast.literal_eval(path_vel["vp_over_vs"])
