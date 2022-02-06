@@ -9,7 +9,7 @@ import glob
 import pandas as pd
 import numpy as np
 from scipy.interpolate import griddata
-from evodcinv import LayeredModel, ThomsonHaskell, params2lay
+from evodcinv import DispersionCurve, LayeredModel, ThomsonHaskell, params2lay
 from make_synthetics.cps_plugin import get_cps_dispersion
 import pyproj
 from pyproj import CRS
@@ -422,10 +422,23 @@ def compare_to_cps(l, f_axis, ny, modes, wavetype, fig_name):
 
 def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_layers_vp_over_vs,
                   fmin, fmax, nb_f, wavetype, modes, velocity_mode, ny,
-                  vel_last_layer, bool_compare_to_cps=False):
+                  vel_last_layer, bool_compare_to_cps=False,
+                  values_from_tomo = False,
+                  dispersion_curves_tomo_file = None,
+                  dist_tolerance_to_tomo = None):
 
-    # set common frequency axis
-    f = np.linspace(fmin, fmax, nb_f)
+    if values_from_tomo:
+        # read tomography output
+        dict_disp_curves_tomo = h5_to_dict(str(dispersion_curves_tomo_file))
+        x_axis_tomo = dict_disp_curves_tomo['X_coord'][0, :]
+        y_axis_tomo = dict_disp_curves_tomo['Y_coord'][:, 0]
+        f = dict_disp_curves_tomo['Frequency']
+        nb_f = len(f)
+        fmin = min(f)
+        fmax = max(f)
+    else:
+        # set common frequency axis
+        f = np.linspace(fmin, fmax, nb_f)
 
     # initialize dict with an array n_cells x n_f for dispersion curves per mode
     dispersion_dict = dict()
@@ -433,6 +446,33 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
     dispersion_dict['modes'] = modes
     dispersion_dict['velocity_mode'] = velocity_mode
     dispersion_dict['f_axis'] = f
+
+    if values_from_tomo:
+        x_model = df_velocity_global['X']
+        y_model = df_velocity_global['Y']
+        dx_model = np.median(np.diff(np.unique(x_model)))
+        dy_model = np.median(np.diff(np.unique(y_model)))
+        if dist_tolerance_to_tomo is None:
+            dist_tolerance_to_tomo = np.sqrt((dx_model/2)**2 + (dy_model/2)**2)*1.1
+        i_cells_valid = []
+        i_cells_x_tomo = []
+        i_cells_y_tomo = []
+        for (i_cell_tomo_x, x_i_tomo) in enumerate(x_axis_tomo):
+            for (i_cell_tomo_y, y_i_tomo) in enumerate(y_axis_tomo):
+                # dist_to_tomo_x = np.abs(x_i_tomo - x_model)
+                # dist_to_tomo_y = np.abs(y_i_tomo - y_model)
+                dist_to_tomo = np.sqrt((x_i_tomo - x_model) ** 2 + (y_i_tomo - y_model) ** 2)
+                i_cell_model = np.where(dist_to_tomo == min(dist_to_tomo))[0][0]
+                crit_cell_exists_in_tomo = \
+                    (min(dist_to_tomo) < dist_tolerance_to_tomo) & \
+                    (dict_disp_curves_tomo['MissingSamples'][i_cell_tomo_x, i_cell_tomo_y] == 0)
+                if crit_cell_exists_in_tomo:
+                    i_cells_valid.append(i_cell_model)
+                    i_cells_x_tomo.append(i_cell_tomo_x)
+                    i_cells_y_tomo.append(i_cell_tomo_y)
+        df_velocity_global = df_velocity_global.iloc[i_cells_valid, :]
+        df_thickness_global = df_thickness_global.iloc[i_cells_valid, :]
+
     dispersion_dict['X'] = df_velocity_global['X']
     dispersion_dict['Y'] = df_velocity_global['Y']
     nb_layers_max = len(set(df_velocity_global)) - 2 + 1    # minus 'X' and 'Y' columns, plus infinite half space
@@ -442,7 +482,7 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
         dispersion_dict["".join(['mode_', str(mode)])] = np.nan * np.zeros((len(df_velocity_global), nb_f))
 
     cell_count = 0
-    for (i, df_velocity_cell), (j, df_thickness_cell) in zip(df_velocity_global.iterrows(),
+    for (i, df_velocity_cell), (_, df_thickness_cell) in zip(df_velocity_global.iterrows(),
                                                                   df_thickness_global.iterrows()):
         thickness_array = df_thickness_cell.iloc[2:].values
         vp_array = df_velocity_cell.iloc[2:].values
@@ -462,9 +502,22 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
 
             # try:
             if bool_compare_to_cps:
-                fig_name = '_cell_' + str(i) + '_' + str(j)
+                fig_name = '_cell_' + str(i)
                 compare_to_cps(l, f, ny, modes, wavetype, fig_name)
-            dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
+            if values_from_tomo:
+                # WARNING transposed tomo output
+                dispersion_values = np.squeeze(
+                    dict_disp_curves_tomo['DispersionCurve'][i_cells_x_tomo[i],
+                                                             i_cells_y_tomo[i]])
+                dispersion_uncerts = np.squeeze(
+                    dict_disp_curves_tomo['Uncertainties'][i_cells_x_tomo[i],
+                                                           i_cells_y_tomo[i]])
+                dc_calculated = []
+                dc_calculated.append(DispersionCurve(dispersion_values, f, mode=0,
+                                                uncertainties=dispersion_uncerts,
+                                                wtype='rayleigh', dtype='group'))
+            else:
+                dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
             # except:
             #     dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
 
@@ -688,6 +741,12 @@ def save_cross_section_plots_along_with_tomo_outputs(df_interfaces, dispersion_d
                                        "".join([fixed_coord + "{:.1f}".format(coord_val / 1000) + 'km']) +
                                        '.png')))
     plt.close(fig)
+
+
+def populate_model_with_tomo_results(f_interfaces, df_velocity, dispersion_dict):
+
+    # returns a dict
+    pass
 
 
 def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cells_x, n_cells_y, folder_out,
@@ -1283,6 +1342,18 @@ if __name__ == '__main__':
     file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
     nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
     if recompute_dispersion:
+
+        dispersion_dict = loop_on_cells(df_vp_interp, df_thickness_interp,
+                                        settings_synthetics.vp_over_vs,
+                                        settings_synthetics.n_layers_vp_over_vs,
+                      settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
+                      settings_synthetics.wavetype, settings_synthetics.modes,
+                      settings_synthetics.velocity_mode, settings_synthetics.ny,
+                      settings_synthetics.vel_last_layer,
+                                        bool_compare_to_cps=settings_synthetics.compare_cps,
+                                        values_from_tomo=True,
+                                        dispersion_curves_tomo_file=settings_synthetics.dispersion_curves_tomo_file)
+
         dispersion_dict = loop_on_cells(df_vp_interp, df_thickness_interp,
                                         settings_synthetics.vp_over_vs,
                                         settings_synthetics.n_layers_vp_over_vs,
