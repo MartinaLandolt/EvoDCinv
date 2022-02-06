@@ -20,6 +20,7 @@ from scipy.spatial import ConvexHull, Delaunay
 import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
+from matplotlib.lines import Line2D
 plt.ioff()
 
 
@@ -693,7 +694,7 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
                              data_type='vs',
                              compare_tomo=False, dispersion_curves_tomo_file=None,
                              clim_model=None, ylim_disp_curves=None,
-                             plot_model_cross_section=False):
+                             plot_model_cross_section=True):
 
     if compare_tomo:
         dict_disp_curves_tomo = h5_to_dict(str(dispersion_curves_tomo_file))
@@ -810,7 +811,7 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
 
         # plot dispersion curves along section
         cmap = matplotlib.cm.get_cmap('brg')
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(constrained_layout=True)
         vals_all = dispersion_dict[mode_field]
         faxis = dispersion_dict['f_axis']
         str_cbar = dispersion_dict['velocity_mode'] + ' velocity (m/s)'
@@ -851,7 +852,7 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
                 disp_curve_i = vals_all[i_cell, :].flatten()
                 h_plot, = ax.plot(faxis, disp_curve_i,
                                   color=cmap(float(ii/len(coord_list_disp_curves))),
-                                  linestyle='--')
+                                  linestyle='-', linewidth=0.6)
                 h_plot_list.append(h_plot)
                 # print(coord_i_true/1000)
                 str_legend.append("".join([other_coord, " = ", "{:.1f}".format(coord_i_true/1000), ' km']))
@@ -867,15 +868,23 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
                         dict_disp_curves_tomo['Uncertainties'][i_cell_tomo_x, i_cell_tomo_y].squeeze()
                     ax.plot(faxis_tomo, disp_curve_tomo,
                             color=cmap(float(ii / len(coord_list_disp_curves))),
-                            linestyle='-')
+                            linestyle='--')
                     # ax.errorbar(faxis_tomo, disp_curve_tomo, uncert_tomo,
                     #                   color=cmap(float(ii / len(coord_list_disp_curves))),
                     #                   linestyle='-')
 
-        plt.legend(h_plot_list, str_legend, bbox_to_anchor=(1.05, 1), loc='upper left')
+        if not compare_tomo:
+            legend1 = ax.legend(h_plot_list, str_legend, bbox_to_anchor=(1.02, 1), loc='upper left')
+        if compare_tomo:
+
+            full_line = Line2D([0], [0], color='k', label='Synthetics', lw=0.6)
+            dotted_line = Line2D([0], [0], color='k', label='Tomogaphy', ls='--')
+            legend2 = ax.legend(handles=[full_line, dotted_line])
+            legend1 = ax.legend(h_plot_list, str_legend, bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax.add_artist(legend2)
         if ylim_disp_curves is not None:
             ax.set_ylim(ylim_disp_curves)
-        plt.tight_layout()
+        # plt.tight_layout()
         if compare_tomo:
             fig_title = "dispersion_curves_along_section_compared_"
         else:
