@@ -217,7 +217,7 @@ class DispersionCurve:
             #REMOOOVE AFTER DEBUG
             #self.flag_stop = flag_stop
         else :
-            raise ValueError("""dipersion curve to small (empty or only one value) to convert to groupe velocity""")
+            raise ValueError("""dipersion curve to small (empty or only one value) to convert to group velocity""")
 
     @property
     def dtype_velocity(self):

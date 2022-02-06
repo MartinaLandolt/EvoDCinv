@@ -369,7 +369,10 @@ def get_dispersion_curve(l, f_axis, ny, modes, wavetype, velocity_mode):
     dc_calculated = th.pick(modes=modes)
     if velocity_mode == "group":
         for dcurve in dc_calculated:
-            dcurve.dtype = velocity_mode
+            try:
+                dcurve.dtype = velocity_mode
+            except:
+                th.propagate(f_axis, ny=ny, domain="fc", n_threads=1)
     return dc_calculated
 
 

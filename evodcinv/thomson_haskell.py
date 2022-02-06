@@ -91,7 +91,8 @@ class ThomsonHaskell:
         vr = self._rayleigh_velocity()
         vmin = max(0.1, np.floor(vr.min()))
         vmax = beta.max()
-        dv = eps * (vmax - vmin)
+        #dv = eps * (vmax - vmin)
+        dv = 2.*(vmax - vmin)/ny
         vmin = max(0.1, vmin - dv)
         if domain == "fc":
             y = np.linspace(vmin, vmax, ny)
