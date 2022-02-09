@@ -423,9 +423,9 @@ def compare_to_cps(l, f_axis, ny, modes, wavetype, fig_name):
 def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_layers_vp_over_vs,
                   fmin, fmax, nb_f, wavetype, modes, velocity_mode, ny,
                   vel_last_layer, bool_compare_to_cps=False,
-                  values_from_tomo = False,
-                  dispersion_curves_tomo_file = None,
-                  dist_tolerance_to_tomo = None):
+                  values_from_tomo=False,
+                  dispersion_curves_tomo_file=None,
+                  dist_tolerance_to_tomo=None):
 
     if values_from_tomo:
         # read tomography output
@@ -450,6 +450,7 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
     if values_from_tomo:
         x_model = df_velocity_global['X']
         y_model = df_velocity_global['Y']
+        contains_nans_model = np.sum(np.isnan(df_velocity_global.iloc[:, 2:].values), axis=1)
         dx_model = np.median(np.diff(np.unique(x_model)))
         dy_model = np.median(np.diff(np.unique(y_model)))
         if dist_tolerance_to_tomo is None:
@@ -465,13 +466,16 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
                 i_cell_model = np.where(dist_to_tomo == min(dist_to_tomo))[0][0]
                 crit_cell_exists_in_tomo = \
                     (min(dist_to_tomo) < dist_tolerance_to_tomo) & \
-                    (dict_disp_curves_tomo['MissingSamples'][i_cell_tomo_x, i_cell_tomo_y] == 0)
+                    (dict_disp_curves_tomo['MissingSamples'][i_cell_tomo_x, i_cell_tomo_y] == 0) & \
+                    (contains_nans_model[i_cell_model] == 0)
                 if crit_cell_exists_in_tomo:
                     i_cells_valid.append(i_cell_model)
                     i_cells_x_tomo.append(i_cell_tomo_x)
                     i_cells_y_tomo.append(i_cell_tomo_y)
         df_velocity_global = df_velocity_global.iloc[i_cells_valid, :]
         df_thickness_global = df_thickness_global.iloc[i_cells_valid, :]
+        df_velocity_global = df_velocity_global.reset_index(drop=True)
+        df_thickness_global = df_thickness_global.reset_index(drop=True)
 
     dispersion_dict['X'] = df_velocity_global['X']
     dispersion_dict['Y'] = df_velocity_global['Y']
@@ -481,7 +485,9 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
     for mode in modes:
         dispersion_dict["".join(['mode_', str(mode)])] = np.nan * np.zeros((len(df_velocity_global), nb_f))
 
-    cell_count = 0
+    # cell_count = 0
+    if values_from_tomo:
+        disp_curve_list = []
     for (i, df_velocity_cell), (_, df_thickness_cell) in zip(df_velocity_global.iterrows(),
                                                                   df_thickness_global.iterrows()):
         thickness_array = df_thickness_cell.iloc[2:].values
@@ -491,14 +497,23 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
                                               n_layers_vp_over_vs=n_layers_vp_over_vs)
         if np.isnan(vp_array).any():
             for mode in modes:
-                dispersion_dict["".join(['mode_', str(mode)])][cell_count, :] = np.nan
+                dispersion_dict["".join(['mode_', str(mode)])][i, :] = np.nan
         else:
+            if values_from_tomo:   # keep 0-thickness layers to keep a constant number of layers in all cells
+                # (useful for further inversion parametrization)
+                min_thickness_tol = -1
+            else:
+                min_thickness_tol = 1   # remove too thin or eroded layers to avoid numerical instabilities in
+                # case of forward modelling
+
             thickness_array_clean, vp_array_clean, vs_array_clean = \
                 make_1d_model_for_cell(thickness_array, vp_array, vs_array,
                                        last_layer_vp=vel_last_layer,
-                                       last_vp_over_vs=vp_over_vs_ratio[-1])
+                                       last_vp_over_vs=vp_over_vs_ratio[-1],
+                                                  min_thickness_tol=min_thickness_tol)
+
             l = convert_1d_model_to_th_format(vp_array_clean, vs_array_clean, thickness_array_clean)
-            dispersion_dict['true_model'][cell_count, 0:l.shape[0], :] = l
+            dispersion_dict['true_model'][i, 0:l.shape[0], :] = l
 
             # try:
             if bool_compare_to_cps:
@@ -512,10 +527,15 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
                 dispersion_uncerts = np.squeeze(
                     dict_disp_curves_tomo['Uncertainties'][i_cells_x_tomo[i],
                                                            i_cells_y_tomo[i]])
+                #:todo: remove those useless 1-element lists
                 dc_calculated = []
-                dc_calculated.append(DispersionCurve(dispersion_values, f, mode=0,
+                dc_new = DispersionCurve(dispersion_values, f, mode=0,
                                                 uncertainties=dispersion_uncerts,
-                                                wtype='rayleigh', dtype='group'))
+                                                wtype='rayleigh', dtype='group')
+                dc_calculated.append(dc_new)
+                if len(dc_calculated) == 0:
+                    print('stop')
+                disp_curve_list.append(dc_new)
             else:
                 dc_calculated = get_dispersion_curve(l, f, ny, modes, wavetype, velocity_mode)
             # except:
@@ -527,13 +547,16 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
                 f_vals = getattr(dc_calculated[mode], 'faxis')
                 i_f = [i for (i, x) in enumerate(f) if (x in f_vals)]
                 try:
-                    dispersion_dict["".join(['mode_', str(mode)])][cell_count, i_f] = vel_vals
+                    dispersion_dict["".join(['mode_', str(mode)])][i, i_f] = vel_vals
                 except:
-                    print('cell ', cell_count, ' out of ', len(df_velocity_global))
+                    print('cell ', i, ' out of ', len(df_velocity_global))
                     print('debug')
 
-        cell_count += 1
-        print('cell ', cell_count, ' out of ', len(df_velocity_global))
+        # cell_count += 1
+        print('cell ', i, ' out of ', len(df_velocity_global))
+
+    if values_from_tomo:
+        dispersion_dict['DispersionCurves'] = disp_curve_list
 
     return dispersion_dict
 
@@ -1247,13 +1270,13 @@ def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y,
     plt.close(fig)
 
 
-if __name__ == '__main__':
+def main(values_from_tomo = False):
 
     recompute_dispersion = settings_synthetics.recompute_dispersion
     reload_interfaces = settings_synthetics.reload_interfaces
 
-    if recompute_dispersion:
-        assert reload_interfaces
+    # if recompute_dispersion:
+    #     assert reload_interfaces
 
     print('model format : ', settings_synthetics.type_vel_model)
     if settings_synthetics.type_vel_model == 1:
@@ -1264,59 +1287,70 @@ if __name__ == '__main__':
         if not Path(path_synthetics_out).exists():
             Path(path_synthetics_out).mkdir()
 
-    if reload_interfaces:
-        # get number of layers
-        if settings_synthetics.n_layers == 'auto':
-            n_interfaces, n_layers = get_interface_number_fmt1(path_model_in)
+        model_out = str(Path(make_synthetics.path_out_format_1).
+                        joinpath(make_synthetics.model_out_format_1))
+
+        if reload_interfaces:
+            # get number of layers
+            if settings_synthetics.n_layers == 'auto':
+                n_interfaces, n_layers = get_interface_number_fmt1(path_model_in)
+            else:
+                raise Exception("User-fixed layer number not yet supported. Number of layers should be auto")
+
+            # read model
+            df_vp_global, df_interfaces_global, dx_in, dy_in = \
+                read_model_fmt1(path_model_in, n_interfaces)
+            df_thickness_global = compute_thickness(df_interfaces_global, df_vp_global)
+
+            # make manual edits as suggested by specialist of chémery
+            df_vp_global = edit_velocities_as_suggested_by_catherine(df_vp_global)
+
+            # select only points where all the horizons are well defined
+            df_interfaces_valid = df_interfaces_global[~df_interfaces_global.isnull().any(axis=1)]
+            df_thickness_valid = df_thickness_global[~df_interfaces_global.isnull().any(axis=1)]
+            df_vp_valid = df_vp_global[~df_interfaces_global.isnull().any(axis=1)]
+
+            # interpolate on desired grid
+            if settings_synthetics.bounds_mode=='auto':
+                xmin = df_vp_valid['X'].min()
+                ymin = df_vp_valid['Y'].min()
+                xmax = df_vp_valid['X'].max()
+                ymax = df_vp_valid['Y'].max()
+            elif settings_synthetics.bounds_mode=='manual':
+                xmin = settings_synthetics.xmin
+                ymin = settings_synthetics.ymin
+                xmax = settings_synthetics.xmax
+                ymax = settings_synthetics.ymax
+            else:
+                raise Exception('unknown bounds_mode value')
+
+            df_vp_valid = remove_outliers(df_vp_valid, std_thresh=2)
+
+            df_vp_interp = interpolate_model_per_layer(df_vp_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
+                                                             n_cells=settings_synthetics.n_cells,
+                                                             lateral_smooth=settings_synthetics.lateral_smooth,
+                                                             smooth_length=settings_synthetics.smooth_length,
+                                                             dx_in=dx_in, dy_in=dy_in)
+            df_interfaces_interp = interpolate_model_per_layer(df_interfaces_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
+                                                             n_cells=settings_synthetics.n_cells,
+                                                             lateral_smooth=settings_synthetics.lateral_smooth,
+                                                             smooth_length=settings_synthetics.smooth_length,
+                                                             dx_in=dx_in, dy_in=dy_in)
+
+            df_thickness_interp = compute_thickness(df_interfaces_interp, df_vp_interp)
+
+            df_vp_interp = replace_velocities_by_mean_values_except_layer1(df_vp_interp)
+            df_vs_interp, df_vp_over_vs_interp = apply_vp_over_vs_ratio_on_dataframe(df_vp_interp,
+                                                               vp_over_vs_ratio=settings_synthetics.vp_over_vs,
+                                                               n_layers_vp_over_vs=settings_synthetics.n_layers_vp_over_vs)
+
+            with open(model_out + '.pickle', 'wb') as f1:
+                pickle.dump([df_interfaces_interp, df_thickness_interp, df_vp_interp,
+                             df_vs_interp, df_vp_over_vs_interp], f1, protocol=pickle.HIGHEST_PROTOCOL)
         else:
-            raise Exception("User-fixed layer number not yet supported. Number of layers should be auto")
-
-        # read model
-        df_vp_global, df_interfaces_global, dx_in, dy_in = \
-            read_model_fmt1(path_model_in, n_interfaces)
-        df_thickness_global = compute_thickness(df_interfaces_global, df_vp_global)
-
-        # make manual edits as suggested by specialist of chémery
-        df_vp_global = edit_velocities_as_suggested_by_catherine(df_vp_global)
-
-        # select only points where all the horizons are well defined
-        df_interfaces_valid = df_interfaces_global[~df_interfaces_global.isnull().any(axis=1)]
-        df_thickness_valid = df_thickness_global[~df_interfaces_global.isnull().any(axis=1)]
-        df_vp_valid = df_vp_global[~df_interfaces_global.isnull().any(axis=1)]
-
-        # interpolate on desired grid
-        if settings_synthetics.bounds_mode=='auto':
-            xmin = df_vp_valid['X'].min()
-            ymin = df_vp_valid['Y'].min()
-            xmax = df_vp_valid['X'].max()
-            ymax = df_vp_valid['Y'].max()
-        elif settings_synthetics.bounds_mode=='manual':
-            xmin = settings_synthetics.xmin
-            ymin = settings_synthetics.ymin
-            xmax = settings_synthetics.xmax
-            ymax = settings_synthetics.ymax
-        else:
-            raise Exception('unknown bounds_mode value')
-
-        df_vp_valid = remove_outliers(df_vp_valid, std_thresh=2)
-
-        df_vp_interp = interpolate_model_per_layer(df_vp_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
-                                                         n_cells=settings_synthetics.n_cells,
-                                                         lateral_smooth=settings_synthetics.lateral_smooth,
-                                                         smooth_length=settings_synthetics.smooth_length,
-                                                         dx_in=dx_in, dy_in=dy_in)
-        df_interfaces_interp = interpolate_model_per_layer(df_interfaces_valid, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax,
-                                                         n_cells=settings_synthetics.n_cells,
-                                                         lateral_smooth=settings_synthetics.lateral_smooth,
-                                                         smooth_length=settings_synthetics.smooth_length,
-                                                         dx_in=dx_in, dy_in=dy_in)
-
-        df_thickness_interp = compute_thickness(df_interfaces_interp, df_vp_interp)
-
-        df_vp_interp = replace_velocities_by_mean_values_except_layer1(df_vp_interp)
-        df_vs_interp, df_vp_over_vs_interp = apply_vp_over_vs_ratio_on_dataframe(df_vp_interp,
-                                                           vp_over_vs_ratio=settings_synthetics.vp_over_vs,
-                                                           n_layers_vp_over_vs=settings_synthetics.n_layers_vp_over_vs)
+            with open(model_out + '.pickle', 'rb') as f1:
+                df_interfaces_interp, df_thickness_interp, df_vp_interp,\
+                    df_vs_interp, df_vp_over_vs_interp = pickle.load(f1)
 
         if settings_synthetics.plot_interfaces:
             save_model_plots(df_interfaces_interp, 'interface',
@@ -1341,6 +1375,8 @@ if __name__ == '__main__':
     # compute dispersion curves
     file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
     nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
+    file_out_wave = "".join([file_out, '_',
+                             settings_synthetics.wavetype, '_', settings_synthetics.velocity_mode])
     if recompute_dispersion:
 
         dispersion_dict = loop_on_cells(df_vp_interp, df_thickness_interp,
@@ -1351,154 +1387,128 @@ if __name__ == '__main__':
                       settings_synthetics.velocity_mode, settings_synthetics.ny,
                       settings_synthetics.vel_last_layer,
                                         bool_compare_to_cps=settings_synthetics.compare_cps,
-                                        values_from_tomo=True,
+                                        values_from_tomo=values_from_tomo,
                                         dispersion_curves_tomo_file=settings_synthetics.dispersion_curves_tomo_file)
 
-        dispersion_dict = loop_on_cells(df_vp_interp, df_thickness_interp,
-                                        settings_synthetics.vp_over_vs,
-                                        settings_synthetics.n_layers_vp_over_vs,
-                      settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
-                      settings_synthetics.wavetype, settings_synthetics.modes,
-                      settings_synthetics.velocity_mode, settings_synthetics.ny,
-                      settings_synthetics.vel_last_layer,
-                                        bool_compare_to_cps=settings_synthetics.compare_cps)
-
-        dict_h5_list = save_h5(dispersion_dict, file_out)
-        with open(file_out + '.pickle', 'wb') as f1:
+        if not values_from_tomo:
+            dict_h5_list = save_h5(dispersion_dict, file_out)
+        else:
+            file_out_wave = file_out_wave + '_tomo'
+        with open(file_out_wave + '.pickle', 'wb') as f1:
             pickle.dump(dispersion_dict, f1, protocol=pickle.HIGHEST_PROTOCOL)
     else:
-        with open(file_out + '.pickle', 'rb') as f1:
+        with open(file_out_wave + '.pickle', 'rb') as f1:
             dispersion_dict = pickle.load(f1)
 
-    if settings_synthetics.plot_dispersion_maps:
-        save_dispersion_plots(dispersion_dict, 'mode_0',
-                         settings_synthetics.n_cells, settings_synthetics.n_cells,
-                         str(Path(make_synthetics.path_out_format_1)))
-        save_dispersion_plots(dispersion_dict, 'mode_0',
-                         settings_synthetics.n_cells, settings_synthetics.n_cells,
-                         str(Path(make_synthetics.path_out_format_1)),
-                              plot_mode='absolute')
-
-        if settings_synthetics.compare_tomo:
-            save_dispersion_plots(dispersion_dict, 'mode_0',
-                             settings_synthetics.n_cells, settings_synthetics.n_cells,
-                             str(Path(make_synthetics.path_out_format_1)),
-                              compare_tomo=settings_synthetics.compare_tomo,
-                              tomo_folder=settings_synthetics.tomo_folder,
-                                  plot_mode='relative')
+    if not values_from_tomo:
+        if settings_synthetics.plot_dispersion_maps:
 
             save_dispersion_plots(dispersion_dict, 'mode_0',
                              settings_synthetics.n_cells, settings_synthetics.n_cells,
+                             str(Path(make_synthetics.path_out_format_1)))
+            save_dispersion_plots(dispersion_dict, 'mode_0',
+                             settings_synthetics.n_cells, settings_synthetics.n_cells,
                              str(Path(make_synthetics.path_out_format_1)),
-                              compare_tomo=settings_synthetics.compare_tomo,
-                              tomo_folder=settings_synthetics.tomo_folder,
                                   plot_mode='absolute')
 
-        # if settings_synthetics.compare_tomo:
-        #     save_dispersion_plots_along_with_tomo_outputs(dispersion_dict, 'mode_0',
-        #                      settings_synthetics.n_cells, settings_synthetics.n_cells,
-        #                      str(Path(make_synthetics.path_out_format_1)), n_skip=1,
-        #                                                   tomo_folder=settings_synthetics.tomo_folder,
-        #                                                   plot_mode='relative')
-        #
-        #     save_dispersion_plots_along_with_tomo_outputs(dispersion_dict, 'mode_0',
-        #                      settings_synthetics.n_cells, settings_synthetics.n_cells,
-        #                      str(Path(make_synthetics.path_out_format_1)), n_skip=1,
-        #                                                   tomo_folder=settings_synthetics.tomo_folder,
-        #                                                   plot_mode='absolute')
+            if settings_synthetics.compare_tomo:
+                save_dispersion_plots(dispersion_dict, 'mode_0',
+                                 settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                 str(Path(make_synthetics.path_out_format_1)),
+                                  compare_tomo=settings_synthetics.compare_tomo,
+                                  tomo_folder=settings_synthetics.tomo_folder,
+                                      plot_mode='relative')
 
-    if settings_synthetics.plot_cross_sections & reload_interfaces:
-        for x_section in settings_synthetics.x_cross_sections:
-            # if settings_synthetics.compare_tomo:
-            #     save_cross_section_plots_along_with_tomo_outputs(df_interfaces_interp, dispersion_dict,
-            #                                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
-            #                                                      str(Path(make_synthetics.path_out_format_1)),
-            #                                                      fixed_coord='x', coord_val=x_section,
-            #                                                      delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-            #                                                      mode_field='mode_0',
-            #                                                          dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file))
+                save_dispersion_plots(dispersion_dict, 'mode_0',
+                                 settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                 str(Path(make_synthetics.path_out_format_1)),
+                                  compare_tomo=settings_synthetics.compare_tomo,
+                                  tomo_folder=settings_synthetics.tomo_folder,
+                                      plot_mode='absolute')
 
 
-            save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
-                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                     str(Path(make_synthetics.path_out_format_1)),
-                                     fixed_coord='x', coord_val=x_section,
-                                     vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
-                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-                                     data_type='vs',
-                                     compare_tomo=settings_synthetics.compare_tomo,
-                                     dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file),
-                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
-                                     clim_model=settings_synthetics.vs_bounds)
-            save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
-                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                     str(Path(make_synthetics.path_out_format_1)),
-                                     fixed_coord='x', coord_val=x_section,
-                                     vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
-                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-                                     data_type='vs', plot_model_cross_section=False,
-                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds)
-            save_cross_section_plots(df_interfaces_interp, df_vp_interp, dispersion_dict,
-                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                     str(Path(make_synthetics.path_out_format_1)),
-                                     fixed_coord='x', coord_val=x_section,
-                                     vel_last_layer=settings_synthetics.vel_last_layer,
-                                     mode_field='mode_0', delta_x_disp_curves=None,
-                                     data_type='vp',
-                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
-                                     clim_model=settings_synthetics.vp_bounds)
-            save_cross_section_plots(df_interfaces_interp, df_vp_over_vs_interp, dispersion_dict,
-                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                     str(Path(make_synthetics.path_out_format_1)),
-                                     fixed_coord='x', coord_val=x_section,
-                                     vel_last_layer=settings_synthetics.vp_over_vs[-1],
-                                     mode_field='mode_0', delta_x_disp_curves=None,
-                                     data_type='vp_over_vs',
-                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
-                                     clim_model=settings_synthetics.vp_over_vs_bounds)
-        for y_section in settings_synthetics.y_cross_sections:
-            # if settings_synthetics.compare_tomo:
-            #     save_cross_section_plots_along_with_tomo_outputs(df_interfaces_interp, dispersion_dict,
-            #                                                      settings_synthetics.n_cells, settings_synthetics.n_cells,
-            #                                                      str(Path(make_synthetics.path_out_format_1)),
-            #                                                      fixed_coord='y', coord_val=y_section,
-            #                                                      delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-            #                                                      mode_field='mode_0',
-            #                                                      dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file))
-            save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
-                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                     str(Path(make_synthetics.path_out_format_1)),
-                                     fixed_coord='y', coord_val=y_section,
-                                     vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
-                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-                                     data_type='vs',
-                                     compare_tomo=settings_synthetics.compare_tomo,
-                                     dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file),
-                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
-                                     clim_model=settings_synthetics.vs_bounds)
-            save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
-                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                     str(Path(make_synthetics.path_out_format_1)),
-                                     fixed_coord='y', coord_val=y_section,
-                                     vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
-                                     mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
-                                     data_type='vs', plot_model_cross_section=False,
-                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds)
-            save_cross_section_plots(df_interfaces_interp, df_vp_interp, dispersion_dict,
-                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                     str(Path(make_synthetics.path_out_format_1)),
-                                     fixed_coord='y', coord_val=y_section,
-                                     vel_last_layer=settings_synthetics.vel_last_layer,
-                                     mode_field='mode_0', delta_x_disp_curves=None,
-                                     data_type='vp',
-                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
-                                     clim_model=settings_synthetics.vp_bounds)
-            save_cross_section_plots(df_interfaces_interp, df_vp_over_vs_interp, dispersion_dict,
-                                     settings_synthetics.n_cells, settings_synthetics.n_cells,
-                                     str(Path(make_synthetics.path_out_format_1)),
-                                     fixed_coord='y', coord_val=y_section,
-                                     vel_last_layer=settings_synthetics.vp_over_vs[-1],
-                                     mode_field='mode_0', delta_x_disp_curves=None,
-                                     data_type='vp_over_vs',
-                                     ylim_disp_curves=settings_synthetics.disp_curves_bounds,
-                                     clim_model=settings_synthetics.vp_over_vs_bounds)
+        if settings_synthetics.plot_cross_sections:
+
+            for x_section in settings_synthetics.x_cross_sections:
+
+                save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
+                                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                         str(Path(make_synthetics.path_out_format_1)),
+                                         fixed_coord='x', coord_val=x_section,
+                                         vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
+                                         mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                         data_type='vs',
+                                         compare_tomo=settings_synthetics.compare_tomo,
+                                         dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file),
+                                         ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                         clim_model=settings_synthetics.vs_bounds)
+                save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
+                                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                         str(Path(make_synthetics.path_out_format_1)),
+                                         fixed_coord='x', coord_val=x_section,
+                                         vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
+                                         mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                         data_type='vs', plot_model_cross_section=False,
+                                         ylim_disp_curves=settings_synthetics.disp_curves_bounds)
+                save_cross_section_plots(df_interfaces_interp, df_vp_interp, dispersion_dict,
+                                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                         str(Path(make_synthetics.path_out_format_1)),
+                                         fixed_coord='x', coord_val=x_section,
+                                         vel_last_layer=settings_synthetics.vel_last_layer,
+                                         mode_field='mode_0', delta_x_disp_curves=None,
+                                         data_type='vp',
+                                         ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                         clim_model=settings_synthetics.vp_bounds)
+                save_cross_section_plots(df_interfaces_interp, df_vp_over_vs_interp, dispersion_dict,
+                                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                         str(Path(make_synthetics.path_out_format_1)),
+                                         fixed_coord='x', coord_val=x_section,
+                                         vel_last_layer=settings_synthetics.vp_over_vs[-1],
+                                         mode_field='mode_0', delta_x_disp_curves=None,
+                                         data_type='vp_over_vs',
+                                         ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                         clim_model=settings_synthetics.vp_over_vs_bounds)
+
+            for y_section in settings_synthetics.y_cross_sections:
+
+                save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
+                                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                         str(Path(make_synthetics.path_out_format_1)),
+                                         fixed_coord='y', coord_val=y_section,
+                                         vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
+                                         mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                         data_type='vs',
+                                         compare_tomo=settings_synthetics.compare_tomo,
+                                         dispersion_curves_tomo_file=Path(settings_synthetics.dispersion_curves_tomo_file),
+                                         ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                         clim_model=settings_synthetics.vs_bounds)
+                save_cross_section_plots(df_interfaces_interp, df_vs_interp, dispersion_dict,
+                                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                         str(Path(make_synthetics.path_out_format_1)),
+                                         fixed_coord='y', coord_val=y_section,
+                                         vel_last_layer=settings_synthetics.vel_last_layer/settings_synthetics.vp_over_vs[-1],
+                                         mode_field='mode_0', delta_x_disp_curves=settings_synthetics.plot_disp_curve_every_km,
+                                         data_type='vs', plot_model_cross_section=False,
+                                         ylim_disp_curves=settings_synthetics.disp_curves_bounds)
+                save_cross_section_plots(df_interfaces_interp, df_vp_interp, dispersion_dict,
+                                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                         str(Path(make_synthetics.path_out_format_1)),
+                                         fixed_coord='y', coord_val=y_section,
+                                         vel_last_layer=settings_synthetics.vel_last_layer,
+                                         mode_field='mode_0', delta_x_disp_curves=None,
+                                         data_type='vp',
+                                         ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                         clim_model=settings_synthetics.vp_bounds)
+                save_cross_section_plots(df_interfaces_interp, df_vp_over_vs_interp, dispersion_dict,
+                                         settings_synthetics.n_cells, settings_synthetics.n_cells,
+                                         str(Path(make_synthetics.path_out_format_1)),
+                                         fixed_coord='y', coord_val=y_section,
+                                         vel_last_layer=settings_synthetics.vp_over_vs[-1],
+                                         mode_field='mode_0', delta_x_disp_curves=None,
+                                         data_type='vp_over_vs',
+                                         ylim_disp_curves=settings_synthetics.disp_curves_bounds,
+                                         clim_model=settings_synthetics.vp_over_vs_bounds)
+
+if __name__ == '__main__':
+    # main(values_from_tomo = False)
+    main(values_from_tomo = True)

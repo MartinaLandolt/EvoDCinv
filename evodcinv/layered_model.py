@@ -6,6 +6,7 @@ License: MIT
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
+import copy
 import numpy as np
 from stochopy import Evolutionary
 from .dispersion_curve import DispersionCurve
@@ -67,9 +68,8 @@ class LayeredModel:
                 return None
 
 
-    def invert3D_fixed_interfaces(self, dcurves_global, dict_disp_curves_tomo,
-                                  interfaces, vp_model,
-                                  vp_over_vs, ny = 100, dtype = "float32", n_threads = 1,
+    def invert3D_fixed_interfaces(self, dcurves_global, dispersion_dict_tomo,
+                                  vp_over_vs, ny = 100, dtype = "float32", n_threads = 1, weight_global_curves = 0.5 ,
                                   evo_kws = dict(popsize = 10, max_iter = 100, constrain = True),
                                   opt_kws = dict(solver = "cpso")):
         """Invert the different modes of the dispersion curves measured at a
@@ -91,7 +91,7 @@ class LayeredModel:
         dcurves_global : list of DispersionCurve
             Dispersion curves to invert as average over all model cells
             (typically a phase velocity from array processing on the full network).
-        dict_disp_curves_tomo : dictionnary of gathered tomography results
+        dispersion_dict_tomo : dictionnary of gathered tomography results
             as created by make_synthetics.tomo_plugin
             Dispersion curves to invert in each model cell.
             (typically group velocities measured by FTAN + tomography workflow such as passivetomochain).
@@ -117,6 +117,7 @@ class LayeredModel:
             raise ValueError("dcurves_global must be a list of DispersionCurve objects")
         else:
             self._dcurves = dcurves_global
+        self._dispersion_dict_tomo = dispersion_dict_tomo
         if not isinstance(vp_over_vs, np.ndarray) or vp_over_vs.ndim != 2:
             raise ValueError("vp_over_vs must be a 2-D ndarray")
         else:
@@ -146,7 +147,42 @@ class LayeredModel:
 
         # :todo add input checks for dispersion_tomo_dict, interfaces, vp_model
         # :todo select only valid cells and populate with dispersion curves
-        args = ( ny, n_threads )
+
+        # prepare a dictionnary containing the average modelled curves per cell to be able to compute the average at the end
+        # (for comparing to global dispersion curves)
+        modes_all = dict()
+        # initialize frequency axis characteristics (large and dense enough to contain all available modes)
+        fmin = np.inf
+        fmax = 0
+        df = np.inf
+        # prepare all necessary fields for forward modelling tomo data
+        all_curves = self._dispersion_dict_tomo['DispersionCurves'] + self._dcurves
+        for dcurve in all_curves:
+            df_new = np.median(np.diff(dcurve.faxis))
+            fmax_new = max(dcurve.faxis)
+            fmin_new = min(dcurve.faxis)
+            if df_new < df:
+                df = df_new
+            if fmin_new < fmin:
+                fmin = fmin_new
+            if fmax_new > fmax:
+                fmax = fmax_new
+        faxis_global = np.arange(fmin, fmax+df, df)
+        nf = len(faxis_global)
+
+        # prepare all necessary fields for forward modelling global data
+        self._faxis_global = faxis_global
+        for dcurve in all_curves:
+            if dcurve.wtype not in modes_all.keys():
+                modes_all[dcurve.wtype] = {}
+            if dcurve.mode not in modes_all[dcurve.wtype].keys():
+                modes_all[dcurve.wtype][dcurve.mode] = {}
+            if dcurve.dtype not in modes_all[dcurve.wtype][dcurve.mode].keys():
+                modes_all[dcurve.wtype][dcurve.mode][dcurve.dtype] = {'values': np.zeros(nf),
+                                                                      'counts': np.zeros(nf)}
+        self._modes_all = modes_all
+
+        args = ( ny, n_threads, weight_global_curves )
         lower = vp_over_vs[:,0]
         upper = vp_over_vs[:,1]
         ea = Evolutionary(self._costfunc_3d, lower, upper, args = args, **evo_kws)
@@ -250,109 +286,99 @@ class LayeredModel:
         misfit = 0.
         count = 0
 
-        modes_all = dict() # keep track of all available modes in the data
-        for i_cell in self._n_cells:
-            # :todo populate layered model instance with valid cells when calling lm.invert3d
+        # pre-initialized dictionnary for average curves
+        modes_all = copy.deepcopy(self._modes_all.copy())
+        for (i, dcurve_cell) in enumerate(self._dispersion_dict_tomo['DispersionCurves']):
+            # :todo figure out identifiers such as dtype, wtype, mode for the tomo outputs
+            # :todo save DispersionCurve instances in each cell in loop_on_cells
+            # :todo check how the different mesh between interfaces and tomo is managed
+            # :todo pick and store all modes (love and rayleigh) contained in _dcurves
             # :todo populate layered model instance with interfaces when calling lm.invert3d
             # :todo populate layered model instance with dispersion_curve objects per cell when calling lm.invert3d
-            dcurves_cell = 'get_tomo_d_curve_from_cell'
             # :todo create or import get_tomo_d_curve_from_cell function
-            x_standard = process_fixed_interface_inversion_params(x, self._interfaces, self._vp_model)
+            vel = process_fixed_interface_inversion_params(x, np.squeeze(
+                                                                      self._dispersion_dict_tomo['true_model'][i, :, :]))
             # :todo create process_fixed_interface_inversion_params
-            vel = params2lay(x_standard)
-            for i, dcurve in enumerate(dcurves_cell):
-                th = ThomsonHaskell(vel, dcurve.wtype)
-                th.propagate(dcurve.faxis, ny = ny, domain = "fc", n_threads = n_threads)
-                if np.any([ np.isnan(sec) for sec in th._panel.ravel() ]):
-                    return np.Inf
-                else:
-                    dc_calc = th.pick([ dcurve.mode ])
-                    if (dc_calc[0].npts > 1):
-                        if dc_calc[0].faxis[0] <= dcurve.faxis[0]:
-                            for dc in dc_calc:
-                                dc.dtype = dcurve.dtype
-                            nan_count = np.sum(np.isnan(dc_calc[0].dtype_velocity))
-                            if nan_count > 0:
-                                misfit += np.Inf
-                                break
-                            else:
-                                # if dc.flag_stop:
-                                #     print('Debug')
-                                dc_obs = np.interp(dc_calc[0].faxis, dcurve.faxis, dcurve.dtype_velocity)
-                                n = dc_calc[0].npts
-                                dc_unc = dcurve.uncertainties[:n]
-                                misfit += np.sum(np.square(dc_obs - dc_calc[0].dtype_velocity)/np.square(dc_unc))
-                                count += dcurve.npts
-                                if (dcurve.mode not in modes_all.keys()) | \
-                                        (dcurve.dtype not in modes_all[dcurve.mode].keys()):
-                                    modes_all[dcurve.mode][dcurve.dtype]['faxis'] = dc_calc[0].faxis
-                                    modes_all[dcurve.mode][dcurve.dtype]['dcurve_sum'] = dc_calc[0].dtype_velocity
-                                    modes_all[dcurve.mode][dcurve.dtype]['ncurves'] = np.ones_like(dc_calc[0].faxis)
-                                else:
-                                    faxis_old = modes_all[dcurve.mode][dcurve.dtype]['faxis']
-                                    dcurve_mean_old = modes_all[dcurve.mode][dcurve.dtype]['dcurve_sum']
-                                    ncurves_old = modes_all[dcurve.mode][dcurve.dtype]['ncurves']
-                                    faxis_new = dc_calc[0].faxis
-                                    dcurve_new = dc_calc[0].dtype_velocity
-                                    faxis = np.union1d(faxis_old, faxis_new)
-                                    dcurve_mean_old_new_shape = np.zeros_like(faxis)
-                                    dcurve_mean_new_new_shape = np.zeros_like(faxis)
-                                    ncurves_old_new_shape = np.zeros_like(faxis)
-                                    ncurves_new_new_shape = np.zeros_like(faxis)
-                                    new_in = np.isin(faxis_new, faxis)
-                                    in_new = np.isin(faxis, faxis_new)
-                                    old_in = np.isin(faxis_old, faxis)
-                                    in_old = np.isin(faxis, faxis_old)
-                                    dcurve_mean_old_new_shape[in_old] = dcurve_mean_old[old_in]
-                                    ncurves_old_new_shape[in_old] = ncurves_old[old_in]
-                                    dcurve_mean_new_new_shape[in_new] = dcurve_new[new_in]
-                                    ncurves_new_new_shape[in_new] = 1
-                                    modes_all[dcurve.mode][dcurve.dtype]['dcurve_mean'] = dcurve_mean_new_new_shape + \
-                                                                            dcurve_mean_old_new_shape
-                                    modes_all[dcurve.mode][dcurve.dtype]['ncurves'] = ncurves_old_new_shape + \
-                                                                            ncurves_new_new_shape
-                        else:
-                            misfit += np.Inf
-                            break
-                    else:
-                        misfit += np.Inf
-                        break
 
+            # solve forward problem for all necessary wave types and modes
+            modes_all_local = copy.deepcopy(modes_all)
+            for wtype in modes_all_local.keys():
+                th = ThomsonHaskell(vel, wtype)
+                th.propagate(self._faxis_global, ny=ny, domain="fc", n_threads=n_threads)
+                if np.any([np.isnan(sec) for sec in th._panel.ravel()]):
+                    flag_invalid = True
+                else:
+                    flag_invalid = False
+                mode_list = [mode_i for mode_i in modes_all_local[wtype].keys()]
+                dc_calc = th.pick(mode_list)
+                for (i_mode, mode) in enumerate(mode_list):
+                    dtype_list = [dtype_i for dtype_i in modes_all_local[wtype][mode].keys()]
+                    for dtype in dtype_list:
+                        if not flag_invalid:
+                            dcurve = dc_calc[i_mode]
+                            dcurve.dtype = dtype
+                            vel_interp = np.interp(self._faxis_global, dcurve.faxis, dcurve.dtype_velocity,
+                                                   left=np.nan, right=np.nan)
+                            modes_all_local[wtype][mode][dtype]['values'] = vel_interp
+                            modes_all_local[wtype][mode][dtype]['counts'] = 1 - np.isnan(vel_interp)
+                            # update the mean velocity dictionary
+                            modes_all[wtype][mode][dtype]['values'] = np.squeeze(np.nansum(np.dstack(
+                                (modes_all[wtype][mode][dtype]['values'],
+                                 modes_all_local[wtype][mode][dtype]['values'])), 2))
+                            modes_all[wtype][mode][dtype]['counts'] += modes_all_local[wtype][mode][dtype]['counts']
+                        else:
+                            modes_all_local[wtype][mode][dtype]['values'][:] = np.nan
+                            modes_all_local[wtype][mode][dtype]['counts'][:] = 0
+
+            # compute the tomographical misfit
+            dc_calc = modes_all_local[dcurve_cell.wtype][dcurve_cell.mode][dcurve_cell.dtype]['values']
+            dc_calc_interp = np.interp(dcurve_cell.faxis, self._faxis_global, dc_calc, 
+                                       left=np.nan, right=np.nan)
+            nan_count = np.sum(np.isnan(dc_calc_interp))
+            if nan_count > 0:
+                misfit += np.Inf
+                break
+            else:
+                dc_unc = dcurve_cell.uncertainties
+                misfit += np.sum(np.square(dcurve_cell.dtype_velocity - dc_calc_interp) / np.square(dc_unc))
+                count += dcurve_cell.npts
+            
+        misfit = np.sqrt(misfit / count) # misfit based on individual cell fit
+        
+        # convert sum to average
+        for wtype in [wtype_i for wtype_i in modes_all.keys()]:
+            for mode in [mode_i for mode_i in modes_all[wtype].keys()]:
+                for dtype in [dtype_i for dtype_i in modes_all[wtype][mode].keys()]:
+                    modes_all[wtype][mode][dtype]['values'] = modes_all[wtype][mode][dtype]['values'] / \
+                                                            modes_all[wtype][mode][dtype]['counts']
+        
+        if len(self._dcurves) > 0:
             # add global misfit
             misfit_global = 0.
             count_global = 0
             for i, dcurve in enumerate(self._dcurves):
-                dcurve_calc_mean = modes_all[dcurve.mode][dcurve.dtype]['dcurve_mean'] / \
-                                   modes_all[dcurve.mode][dcurve.dtype]['ncurves']
-                faxis_calc = modes_all[dcurve.mode][dcurve.dtype]['faxis']
-
-                if len(faxis_calc) > 1:
-                    if faxis_calc[0] <= dcurve.faxis[0]:
-                        nan_count = np.sum(np.isnan(dcurve_calc_mean))
-                        if nan_count > 0:
-                            misfit_global += np.Inf
-                            break
-                        else:
-                            dc_obs = np.interp(faxis_calc, dcurve.faxis, dcurve.dtype_velocity)
-                            n = len(faxis_calc)
-                            dc_unc = dcurve.uncertainties[:n]
-                            misfit += np.sum(np.square(dc_obs - dcurve_calc_mean)/np.square(dc_unc))
-                            count_global += dcurve.npts
-                    else:
-                        misfit_global += np.Inf
-                        break
-                else:
+                dcurve_calc_mean = modes_all[dcurve.wtype][dcurve.mode][dcurve.dtype]['values']
+                dc_calc_interp = np.interp(dcurve.faxis, self._faxis_global, dcurve_calc_mean,
+                                           left=np.nan, right=np.nan)
+                nan_count = np.sum(np.isnan(dc_calc_interp))
+                if nan_count > 0:
                     misfit_global += np.Inf
                     break
+                else:
+                    dc_unc = dcurve.uncertainties
+                    misfit_global += np.sum(np.square(dcurve.dtype_velocity - dc_calc_interp) / np.square(dc_unc))
+                    count_global += dcurve_cell.npts
 
             misfit_global = np.sqrt(misfit_global/count_global)
-            misfit = np.sqrt(misfit / count)
-            misfit_cumulated = weight_global_curves * misfit_global + (1 - weight_global_curves) * misfit
 
-            if count != 0:
-                return misfit_cumulated
-            else:
-                return np.Inf
+            misfit_cumulated = weight_global_curves * misfit_global + (1 - weight_global_curves) * misfit
+        else:
+            misfit_cumulated = misfit
+
+        if count != 0:
+            return misfit_cumulated
+        else:
+            return np.Inf
 
     def _costfunc(self, x, *args):
         ny, n_threads = args
@@ -572,6 +598,14 @@ def params2lay(x):
     rho = _nafe_drake(alpha)
     d = x[n_layers:2*n_layers]
     vel = np.concatenate((alpha[:,None], beta[:,None], rho[:,None], d[:,None]), axis = 1)
+    return vel
+
+def process_fixed_interface_inversion_params(vp_over_vs, x_original):
+    thickness_original = x_original[:, -1]
+    x_valid = x_original[thickness_original > 1, :]
+    vp_over_vs_valid = vp_over_vs[thickness_original >1]
+    vel = x_valid.copy()
+    vel[:, 1] = vel[:, 0]/vp_over_vs_valid
     return vel
 
 
