@@ -51,9 +51,9 @@ if __name__ == "__main__":
 
     # Parameters
     ny = 800 #200                        # Number of velocity discretization points
-    max_run = 10                    # Number of runs
-    popsize = 10
-    max_iter = 50
+    max_run = 1                    # Number of runs
+    popsize = 4
+    max_iter = 2
     outdir = "output/" + output_name             # Output directory
 
 
@@ -134,11 +134,11 @@ if __name__ == "__main__":
             models.append(deepcopy(lm))
             progress(i, max_run, "perc", prefix="Inverting dispersion curves: ")
 
-    # if mpi_rank == 0:
-        # print("\n")
+    if mpi_rank == 0:
+        print("\n")
         # misfits = [m.misfit for m in models]
         # print(models[np.argmin(misfits)])
-        # print("Elapsed time: %.2f seconds\n" % (time.time() - starttime))
+        print("Elapsed time: %.2f seconds\n" % (time.time() - starttime))
 
         # best_model = models[np.argmin(misfits)]
         # best_model.save("%s/best_model.pickle" % outdir)

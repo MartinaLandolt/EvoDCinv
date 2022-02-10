@@ -2,3 +2,4 @@ numpy
 matplotlib
 scipy
 stochopy==1.7.3
+pickle5
