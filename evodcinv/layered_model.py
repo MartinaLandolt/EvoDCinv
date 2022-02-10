@@ -167,7 +167,11 @@ class LayeredModel:
                 fmin = fmin_new
             if fmax_new > fmax:
                 fmax = fmax_new
-        faxis_global = np.arange(fmin, fmax+df, df)
+        nf_ceil = int(np.ceil((fmax - fmin + df) / df))
+        rest_ceil = int(np.ceil(nf_ceil / n_threads))
+        nf_new = n_threads * rest_ceil
+        faxis_global = np.linspace(fmin, fmax+df, nf_new)
+
         nf = len(faxis_global)
 
         # prepare all necessary fields for forward modelling global data
@@ -188,9 +192,9 @@ class LayeredModel:
         ea = Evolutionary(self._costfunc_3d, lower, upper, args = args, **evo_kws)
         xopt, gfit = ea.optimize(**opt_kws)
         self._misfit = gfit
-        self._model = np.array(xopt, dtype = dtype)
+        self._model_vp_over_vs = np.array(xopt, dtype = dtype)
         self._misfits = np.array(ea.energy, dtype = dtype)
-        self._models = np.array(ea.models, dtype = dtype)
+        self._models_vp_over_vs = np.array(ea.models, dtype = dtype)
         self._n_iter = ea.n_iter
         self._n_eval = ea.n_eval
         return self
@@ -520,6 +524,13 @@ class LayeredModel:
     def model(self):
         if hasattr(self, "_model"):
             return self._model
+        else:
+            raise AttributeError("no inversion performed yet")
+
+    @property
+    def model_vp_over_vs(self):
+        if hasattr(self, "_model_vp_over_vs"):
+            return self._model_vp_over_vs
         else:
             raise AttributeError("no inversion performed yet")
             

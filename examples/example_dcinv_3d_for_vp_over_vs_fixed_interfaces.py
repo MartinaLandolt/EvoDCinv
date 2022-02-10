@@ -136,12 +136,16 @@ if __name__ == "__main__":
 
     if mpi_rank == 0:
         print("\n")
+        #:todo adapt to size of m
         misfits = [m.misfit for m in models]
-        print(models[np.argmin(misfits)])
+        print(models[np.argmin(misfits)]._model)
         print("Elapsed time: %.2f seconds\n" % (time.time() - starttime))
 
+        #:todo adapt to size of m
         best_model = models[np.argmin(misfits)]
         best_model.save("%s/best_model.pickle" % outdir)
+
+        #: todo create new routine params2lay adapted to the case with thickness and Vp fixed
         vel = best_model.params2lay()
         th = ThomsonHaskell(vel, dcurves_global[0].wtype)
         th.propagate(dcurves_global[0].faxis, ny=ny, domain="fc")

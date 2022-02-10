@@ -897,7 +897,7 @@ def save_cross_section_plots(df_interfaces, df_velocity, dispersion_dict, n_cell
         # plot dispersion curves along section
         cmap = matplotlib.cm.get_cmap('brg')
         fig, ax = plt.subplots(constrained_layout=True)
-        vals_all = dispersion_dict[mode_field]
+        vals_all = dispersion_dict[mode_field].copy()
         faxis = dispersion_dict['f_axis']
         str_cbar = dispersion_dict['velocity_mode'] + ' velocity (m/s)'
 
@@ -1134,8 +1134,8 @@ def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y,
     if not path_data.exists():
         path_data.mkdir()
 
-    vals_all = dispersion_dict[field]
-    faxis = dispersion_dict['f_axis']
+    vals_all = dispersion_dict[field].copy()
+    faxis = dispersion_dict['f_axis'].copy()
 
     if compare_tomo:
         # read tomo results in a dictionnary
@@ -1176,7 +1176,7 @@ def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y,
             f = float(freq_str)
             # check the synthetics dictionnary contains
             # the desired frequency to within some tolerance
-            i_f_synth = np.where(np.abs(faxis - f) < 0.01)[0]
+            i_f_synth = np.where(np.abs(faxis - f) < np.median(1.1*np.diff(faxis)/2))[0]
             if len(i_f_synth) > 0:
                 # get group velocity values for synthetics
                 f_synth = faxis[i_f_synth[0]]
@@ -1195,6 +1195,8 @@ def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y,
                     vel_tomo_plot = vel_anom_tomo
                 else:
                     vel_tomo_plot = (vel_anom_tomo + 1) * vel_ref_tomo
+            else:
+                print('debug')
 
         else:
             z = vals_all[:, i]
@@ -1374,7 +1376,7 @@ def main(values_from_tomo = False):
 
     # compute dispersion curves
     file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
-    nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start)/settings_synthetics.f_step))+1
+    nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start + settings_synthetics.f_step)/settings_synthetics.f_step))+1
     file_out_wave = "".join([file_out, '_',
                              settings_synthetics.wavetype, '_', settings_synthetics.velocity_mode])
     if recompute_dispersion:
@@ -1510,5 +1512,5 @@ def main(values_from_tomo = False):
                                          clim_model=settings_synthetics.vp_over_vs_bounds)
 
 if __name__ == '__main__':
-    # main(values_from_tomo = False)
-    main(values_from_tomo = True)
+    main(values_from_tomo = False)
+    # main(values_from_tomo = True)
