@@ -43,7 +43,9 @@ examples/test_sub
 
 # Test results
 *.png
+*.pickle
 output/
 make_synthetics/synthetics_chemery
 make_synthetics/model_chemery
+make_synthetics/tomo_outputs/
 examples/output

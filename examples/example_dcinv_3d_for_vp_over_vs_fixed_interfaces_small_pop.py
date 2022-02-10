@@ -52,7 +52,7 @@ if __name__ == "__main__":
     # Parameters
     ny = 800 #200                        # Number of velocity discretization points
     max_run = 1                    # Number of runs
-    popsize = 5
+    popsize = 4
     max_iter = 2
     outdir = "output/" + output_name             # Output directory
 
@@ -136,19 +136,15 @@ if __name__ == "__main__":
 
     if mpi_rank == 0:
         print("\n")
-        #:todo adapt to size of m
-        misfits = [m.misfit for m in models]
-        print(models[np.argmin(misfits)]._model_vp_over_vs)
+        # misfits = [m.misfit for m in models]
+        # print(models[np.argmin(misfits)])
         print("Elapsed time: %.2f seconds\n" % (time.time() - starttime))
 
-        #:todo adapt to size of m
-        best_model = models[np.argmin(misfits)]
-        best_model.save("%s/best_model.pickle" % outdir)
-
-        #: todo create new routine params2lay adapted to the case with thickness and Vp fixed
-        #vel = best_model.params2lay()
-        #th = ThomsonHaskell(vel, dcurves_global[0].wtype)
-        #th.propagate(dcurves_global[0].faxis, ny=ny, domain="fc")
-        #inverted_dc = th.pick([dcurves_global[0].mode])[0]
-        #inverted_dc.dtype = dcurves_global[0].dtype
-        #inverted_dc.save("%s/best_model_%s_dc.txt" % (outdir, dtype))
+        # best_model = models[np.argmin(misfits)]
+        # best_model.save("%s/best_model.pickle" % outdir)
+        # vel = best_model.params2lay()
+        # th = ThomsonHaskell(vel, dcurves_global[0].wtype)
+        # th.propagate(dcurves_global[0].faxis, ny=ny, domain="fc")
+        # inverted_dc = th.pick([dcurves_global[0].mode])[0]
+        # inverted_dc.dtype = dcurves_global[0].dtype
+        # inverted_dc.save("%s/best_model_%s_dc.txt" % (outdir, dtype))
