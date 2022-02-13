@@ -239,7 +239,7 @@ def edit_velocities_as_suggested_by_catherine(df_velocity):
     df_velocity['(H01-H02) Vint'] = 1600.       # sables de l'orléanais
     df_velocity['(H02-H03) Vint'] = 1900.       # calcaires de beauce
     df_velocity['(H03-H04) Vint'] = 2200.       # craie
-    df_velocity['(H04-H10) Vint'] = 2200.       # merge cenomanien and craie
+    #df_velocity['(H04-H10) Vint'] = 2200.       # merge cenomanien and craie
     return df_velocity
 
 
@@ -421,15 +421,24 @@ def compare_to_cps(l, f_axis, ny, modes, wavetype, fig_name):
         plt.close(fig)
 
 def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_layers_vp_over_vs,
-                  fmin, fmax, nb_f, wavetype, modes, velocity_mode, ny,
+                  fmin, fmax, f_step, wavetype, modes, velocity_mode, ny,
                   vel_last_layer, bool_compare_to_cps=False,
                   values_from_tomo=False,
                   dispersion_curves_tomo_file=None,
-                  dist_tolerance_to_tomo=None):
+                  dist_tolerance_to_tomo=None,
+                  x_step_for_choosing_tomo_curves=None):
 
     if values_from_tomo:
         # read tomography output
         dict_disp_curves_tomo = h5_to_dict(str(dispersion_curves_tomo_file))
+        if x_step_for_choosing_tomo_curves is not None:
+            dx_tomo = np.median(np.diff(dict_disp_curves_tomo['X_coord'][0, :]))
+            n_skip = int(np.floor(x_step_for_choosing_tomo_curves / dx_tomo))
+            dict_disp_curves_tomo['DispersionCurve'] = dict_disp_curves_tomo['DispersionCurve'][::n_skip, ::n_skip, :]
+            dict_disp_curves_tomo['Uncertainties'] = dict_disp_curves_tomo['Uncertainties'][::n_skip, ::n_skip, :]
+            dict_disp_curves_tomo['X_coord'] = dict_disp_curves_tomo['X_coord'][::n_skip, ::n_skip]
+            dict_disp_curves_tomo['Y_coord'] = dict_disp_curves_tomo['Y_coord'][::n_skip, ::n_skip]
+            dict_disp_curves_tomo['MissingSamples'] = dict_disp_curves_tomo['MissingSamples'][::n_skip, ::n_skip]
         x_axis_tomo = dict_disp_curves_tomo['X_coord'][0, :]
         y_axis_tomo = dict_disp_curves_tomo['Y_coord'][:, 0]
         f = dict_disp_curves_tomo['Frequency']
@@ -438,7 +447,9 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
         fmax = max(f)
     else:
         # set common frequency axis
-        f = np.linspace(fmin, fmax, nb_f)
+        f = np.arange(fmin, fmax, f_step)
+        nb_f = len(f)
+        #f = np.linspace(fmin, fmax, nb_f)
 
     # initialize dict with an array n_cells x n_f for dispersion curves per mode
     dispersion_dict = dict()
@@ -1272,8 +1283,13 @@ def save_dispersion_plots(dispersion_dict, field, n_cells_x, n_cells_y,
     plt.close(fig)
 
 
-def main(values_from_tomo = False):
+def main():
 
+    values_from_tomo = settings_synthetics.values_from_tomo
+    if settings_synthetics.decimate_tomo:
+        step_decimated_tomo = settings_synthetics.step_decimated_tomo
+    else:
+        step_decimated_tomo = None
     recompute_dispersion = settings_synthetics.recompute_dispersion
     reload_interfaces = settings_synthetics.reload_interfaces
 
@@ -1376,7 +1392,8 @@ def main(values_from_tomo = False):
 
     # compute dispersion curves
     file_out = str(Path(make_synthetics.path_out_format_1).joinpath(make_synthetics.file_out_format_1))
-    nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start + settings_synthetics.f_step)/settings_synthetics.f_step))+1
+    # nb_f = int(np.ceil((settings_synthetics.f_stop - settings_synthetics.f_start + settings_synthetics.f_step)/
+    #                    settings_synthetics.f_step))
     file_out_wave = "".join([file_out, '_',
                              settings_synthetics.wavetype, '_', settings_synthetics.velocity_mode])
     if recompute_dispersion:
@@ -1384,13 +1401,15 @@ def main(values_from_tomo = False):
         dispersion_dict = loop_on_cells(df_vp_interp, df_thickness_interp,
                                         settings_synthetics.vp_over_vs,
                                         settings_synthetics.n_layers_vp_over_vs,
-                      settings_synthetics.f_start, settings_synthetics.f_stop, nb_f,
+                      settings_synthetics.f_start, settings_synthetics.f_stop,
+                                        settings_synthetics.f_step,
                       settings_synthetics.wavetype, settings_synthetics.modes,
                       settings_synthetics.velocity_mode, settings_synthetics.ny,
                       settings_synthetics.vel_last_layer,
                                         bool_compare_to_cps=settings_synthetics.compare_cps,
+                                        dispersion_curves_tomo_file=settings_synthetics.dispersion_curves_tomo_file,
                                         values_from_tomo=values_from_tomo,
-                                        dispersion_curves_tomo_file=settings_synthetics.dispersion_curves_tomo_file)
+                                        x_step_for_choosing_tomo_curves = step_decimated_tomo)
 
         if not values_from_tomo:
             dict_h5_list = save_h5(dispersion_dict, file_out)
@@ -1512,5 +1531,5 @@ def main(values_from_tomo = False):
                                          clim_model=settings_synthetics.vp_over_vs_bounds)
 
 if __name__ == '__main__':
-    main(values_from_tomo = False)
-    # main(values_from_tomo = True)
+    # main(values_from_tomo = False)
+    main()
