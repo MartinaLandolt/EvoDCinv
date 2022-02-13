@@ -49,3 +49,4 @@ make_synthetics/synthetics_chemery
 make_synthetics/model_chemery
 make_synthetics/tomo_outputs/
 examples/output
+examples/pbs_logs

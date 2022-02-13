@@ -51,9 +51,9 @@ if __name__ == "__main__":
 
     # Parameters
     ny = 800 #200                        # Number of velocity discretization points
-    max_run = 1                    # Number of runs
-    popsize = 5
-    max_iter = 2
+    max_run = 10                    # Number of runs
+    popsize = 15
+    max_iter = 25
     outdir = "output/" + output_name             # Output directory
 
 
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     n_layers = dispersion_dict_tomo['true_model'].shape[1]
 
     # Inversion boundaries
-    vp_over_vs = np.tile(np.array([1.5, 2.5]), (n_layers, 1))
+    vp_over_vs = np.tile(np.array([1.5, 3.5]), (n_layers, 1))
 
     # Check the number of layers is consistent
     assert vp_over_vs.shape[0] == n_layers
