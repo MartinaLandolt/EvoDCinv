@@ -63,7 +63,7 @@ if __name__ == "__main__":
     # Parse arguments
     parser = ArgumentParser()
     parser.add_argument("-n", "--num_threads", type=int, default=8)
-    parser.add_argument("-m", "--use_mpi", type=bool, default=True)
+    #parser.add_argument("-m", "--use_mpi", type=bool, default=True)
     parser.add_argument("dtype", help="Choose between phase velocity (default) or group velocity",
                         type=str, default="phase")
     parser.add_argument("output_name", help="Enter output file name",
@@ -74,14 +74,15 @@ if __name__ == "__main__":
                         type=str, default="data/disp_curves_tomo.pickle")
     args = parser.parse_args()
     num_threads = args.num_threads
-    mpi = args.use_mpi
+    #mpi = args.use_mpi
     dtype = args.dtype
     output_name = args.output_name
     global_data_dir = args.input_global_curves
     tomo_file = args.input_dispersion_dict_tomo
 
-    if mpi and not mpi_exist:
-        raise ValueError("mpi4py is not installed or not properly installed")
+    mpi = mpi_exist
+    # if mpi and not mpi_exist:
+    #     raise ValueError("mpi4py is not installed or not properly installed")
 
     if mpi:
         mpi_comm = MPI.COMM_WORLD
