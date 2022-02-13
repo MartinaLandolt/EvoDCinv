@@ -288,10 +288,13 @@ class LayeredModel:
         # add individual misfits per cell
         # vel = params2lay(x)
         misfit = 0.
+        misfit_global = 0.
         count = 0
 
         # pre-initialized dictionnary for average curves
         modes_all = copy.deepcopy(self._modes_all.copy())
+        dc_calc_all = []
+        misfit_cumulated = np.Inf
         for (i, dcurve_cell) in enumerate(self._dispersion_dict_tomo['DispersionCurves']):
             # :todo figure out identifiers such as dtype, wtype, mode for the tomo outputs
             # :todo save DispersionCurve instances in each cell in loop_on_cells
@@ -338,6 +341,7 @@ class LayeredModel:
             dc_calc = modes_all_local[dcurve_cell.wtype][dcurve_cell.mode][dcurve_cell.dtype]['values']
             dc_calc_interp = np.interp(dcurve_cell.faxis, self._faxis_global, dc_calc, 
                                        left=np.nan, right=np.nan)
+            dc_calc_all.append(dc_calc)
             nan_count = np.sum(np.isnan(dc_calc_interp))
             if nan_count > 0:
                 misfit += np.Inf
@@ -379,10 +383,10 @@ class LayeredModel:
         else:
             misfit_cumulated = misfit
 
-        if count != 0:
-            return misfit_cumulated
-        else:
-            return np.Inf
+        #if count != 0:
+        return misfit_cumulated, misfit_global, misfit, modes_all, dc_calc_all
+        #else:
+            #return np.Inf
 
     def _costfunc(self, x, *args):
         ny, n_threads = args
