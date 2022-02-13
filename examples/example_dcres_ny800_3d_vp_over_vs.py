@@ -8,6 +8,13 @@ import matplotlib.pyplot as plt
 import copy
 
 try:
+    from mpi4py import MPI
+except ImportError:
+    mpi_exist = False
+else:
+    mpi_exist = True
+
+try:
     import pickle5 as pickle
     # import cPickle as pickle
 except ImportError:
@@ -56,6 +63,7 @@ if __name__ == "__main__":
     # Parse arguments
     parser = ArgumentParser()
     parser.add_argument("-n", "--num_threads", type=int, default=8)
+    parser.add_argument("-m", "--use_mpi", type=bool, default=True)
     parser.add_argument("dtype", help="Choose between phase velocity (default) or group velocity",
                         type=str, default="phase")
     parser.add_argument("output_name", help="Enter output file name",
@@ -66,10 +74,22 @@ if __name__ == "__main__":
                         type=str, default="data/disp_curves_tomo.pickle")
     args = parser.parse_args()
     num_threads = args.num_threads
+    mpi = args.use_mpi
     dtype = args.dtype
     output_name = args.output_name
     global_data_dir = args.input_global_curves
     tomo_file = args.input_dispersion_dict_tomo
+
+    if mpi and not mpi_exist:
+        raise ValueError("mpi4py is not installed or not properly installed")
+
+    if mpi:
+        mpi_comm = MPI.COMM_WORLD
+        mpi_rank = mpi_comm.Get_rank()
+        mpi_size = mpi_comm.Get_size()
+    else:
+        mpi_rank = 0
+        mpi_size = 1
 
     # Parameters
     # set parameters
@@ -217,24 +237,62 @@ if __name__ == "__main__":
                                                                   'counts': np.zeros(nf)}
 
     # loop over good models
-    forward_dcurves_global = []
-    forward_dcurves_tomo = []
-    misfit_table = np.nan * np.zeros((len(models), 2))
-    for (i, m) in enumerate(models):
-        lm = LayeredModel()
-        lm._dcurves = dcurves_global
-        lm._n_layers = m.shape[0]
-        lm._dispersion_dict_tomo = dispersion_dict_tomo
-        lm._faxis_global = faxis_global
-        lm._modes_all = copy.deepcopy(modes_all)
-        # forward model via adapted cost function
-        misfit_cumulated_new, misfit_global_new, misfit_tomo_new,  modes_all_new, dc_calc_all_new = \
-            lm._costfunc_3d(m, ny, num_threads, 0.5)
-        misfit_table[i, 0] = misfit_global_new
-        misfit_table[i, 1] = misfit_tomo_new
-        forward_dcurves_global.append(modes_all_new)
-        forward_dcurves_tomo.append(dc_calc_all_new)
-        print('stop')
+    n = len(models)
+
+    if mpi:
+        if mpi_rank==0:
+            print('MPI mode verbose'+'\n')
+            print('number of models to process' + '\n')
+            print(n)
+        mpi_comm.Barrier()
+        mpi_comm.Bcast([models, MPI.DOUBLE], root=0)
+        n_load = len(np.arange(mpi_rank, n, mpi_size))
+        forward_dcurves_global = [None] * n_load
+        forward_dcurves_tomo = [None] * n_load
+        misfit_table = np.nan * np.zeros((n_load, 2))
+        for (i, i_loc) in zip(np.arange(mpi_rank, n, mpi_size), range(n_load)):
+            m = models[i]
+            lm = LayeredModel()
+            lm._dcurves = dcurves_global
+            lm._n_layers = m.shape[0]
+            lm._dispersion_dict_tomo = dispersion_dict_tomo
+            lm._faxis_global = faxis_global
+            lm._modes_all = copy.deepcopy(modes_all)
+            # forward model via adapted cost function
+            misfit_cumulated_new, misfit_global_new, misfit_tomo_new,  modes_all_new, dc_calc_all_new = \
+                lm._costfunc_3d(m, ny, num_threads, 0.5)
+            misfit_table[i_loc, 0] = misfit_global_new
+            misfit_table[i_loc, 1] = misfit_tomo_new
+            forward_dcurves_global[i_loc] = modes_all_new
+            forward_dcurves_tomo[i_loc] = dc_calc_all_new
+        mpi_comm.Barrier()
+        mpi_comm.Allgather([misfit_table, MPI.DOUBLE],
+                           [forward_dcurves_global, MPI.DOUBLE],
+                           [forward_dcurves_tomo, MPI.DOUBLE])
+        print('MPI loop finished' + '\n')
+        print('len(misfit_table)'+'\n')
+        print(len(misfit_table))
+        print('len(forward_dcurves_global)'+'\n')
+        print(len(forward_dcurves_global))
+    else:
+        forward_dcurves_global = []
+        forward_dcurves_tomo = []
+        misfit_table = np.nan * np.zeros((n, 2))
+        for (i, m) in enumerate(models):
+            lm = LayeredModel()
+            lm._dcurves = dcurves_global
+            lm._n_layers = m.shape[0]
+            lm._dispersion_dict_tomo = dispersion_dict_tomo
+            lm._faxis_global = faxis_global
+            lm._modes_all = copy.deepcopy(modes_all)
+            # forward model via adapted cost function
+            misfit_cumulated_new, misfit_global_new, misfit_tomo_new,  modes_all_new, dc_calc_all_new = \
+                lm._costfunc_3d(m, ny, num_threads, 0.5)
+            misfit_table[i, 0] = misfit_global_new
+            misfit_table[i, 1] = misfit_tomo_new
+            forward_dcurves_global.append(modes_all_new)
+            forward_dcurves_tomo.append(dc_calc_all_new)
+            print('stop')
 
     # save the full dict per model (as in cost function)
     dict_forward_modelling = {'forward_dcurves_global': forward_dcurves_global,
