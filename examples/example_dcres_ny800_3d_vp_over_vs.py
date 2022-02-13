@@ -177,6 +177,12 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig("%s/selected_models%s.png" % (outdir, '_misfit_max_' + str(n_sigma_keep)))
     plt.close(fig)
+
+    # save plottable models :
+    np.savetxt('%s/mean_model%s.txt' % (outdir, '_misfit_max_' + str(n_sigma_keep)), np.vstack([z_plot, model_mean_plot]))
+    np.savetxt('%s/min_models%s.txt' % (outdir, '_misfit_max_' + str(n_sigma_keep)), np.vstack([z_plot, model_min_plot]))
+    np.savetxt('%s/max_models%s.txt' % (outdir, '_misfit_max_' + str(n_sigma_keep)), np.vstack([z_plot, model_max_plot]))
+
     # initialize frequency axis characteristics (large and dense enough to contain all available modes)
     fmin = np.inf
     fmax = 0
@@ -236,42 +242,6 @@ if __name__ == "__main__":
                               'misfit_table': misfit_table}
     pickle.dump(dict_forward_modelling, open("%s/fwd_modelling.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
 
-
-
-    z_axis = np.arange(zmin, zmax + zstep, zstep)
-        # discretisize model on this z axis
-
-    def z_disctretisation(model_vp_over_vs, mean_thickness, z_axis):
-        vel_new = np.nan * np.zeros(len(z_axis))
-        rho_new = np.nan * np.zeros(len(z_axis))
-        z_cum = np.hstack((0, np.cumsum(model[n:2 * n])))
-        for i in range(len(z_cum) - 1):
-            z_min = z_cum[i]
-            z_max = z_cum[i + 1]
-            vel_new[(z_axis < z_max) & (z_axis >= z_min)] = model[i]
-            rho_new[(z_axis < z_max) & (z_axis >= z_min)] = model[i+2*n]
-        m_new = np.vstack([z_axis,vel_new, rho_new])
-        return m_new
-
-    n = int(len(models[0, :]) / 3)
-    new_models = []
-    for mod in models:
-        m_new = z_disctretisation(mod, z_axis, n)
-        new_models.append(m_new)
-
-    model_moy = np.empty(len(z_axis))
-    model_min = np.empty(len(z_axis))
-    model_max = np.empty(len(z_axis))
-    for z in range(len(z_axis)):
-        model_moy[z] = np.nansum([ (model[1,z]*np.exp(-0.5*energy[i]**2))
-                                   for (i,model) in enumerate(new_models)])\
-                       /np.nansum(np.exp(-0.5*energy**2))
-        model_min[z] = np.nanmin([model[1,z] for model in new_models])
-        model_max[z] = np.nanmax([model[1,z] for model in new_models])
-
-    np.savetxt('%s/mean_model.txt' % outdir, np.vstack([z_axis, model_moy]))
-    np.savetxt('%s/min_models.txt' % outdir, np.vstack([z_axis, model_min]))
-    np.savetxt('%s/max_models.txt' % outdir, np.vstack([z_axis, model_max]))
 
     # remains for dcres_view:
     # - plot the models using average width per layer, color by cost fun
