@@ -143,11 +143,13 @@ if __name__ == "__main__":
     energy = np.hstack(all_energy)
     n_models = len(models)
 
+    # keep the same frequency axis
+    faxis_global = m._faxis_global
+    nf = len(faxis_global)
+
+    # save best model
     best_model = models[np.argmin(energy)]
     pickle.dump(best_model, open("%s/best_model_rms.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
-
-    # best_model = []
-    # best_model.append(pickle.load(open("%s/best_model_rms.pickle" % outdir, "rb")))
 
     # select good models
     apost = np.exp(-0.5*energy**2)
@@ -189,6 +191,7 @@ if __name__ == "__main__":
     h_area = plt.gca().fill_betweenx(z_plot, model_min_plot, model_max_plot, color='gray', alpha=0.5)
     h_mean, = plt.plot(model_mean_plot, z_plot, color='k')
     h_best, = plt.plot(model_best_plot, z_plot, color='r', ls='--')
+    plt.gca().set_ylim(z_plot[0], z_plot[-1])
     plt.gca().invert_yaxis()
     plt.xlabel('Vp/Vs ratio')
     plt.ylabel('Depth (m)')
@@ -203,28 +206,31 @@ if __name__ == "__main__":
     np.savetxt('%s/mean_model%s.txt' % (outdir, '_misfit_max_' + str(n_sigma_keep)), np.vstack([z_plot, model_mean_plot]))
     np.savetxt('%s/min_models%s.txt' % (outdir, '_misfit_max_' + str(n_sigma_keep)), np.vstack([z_plot, model_min_plot]))
     np.savetxt('%s/max_models%s.txt' % (outdir, '_misfit_max_' + str(n_sigma_keep)), np.vstack([z_plot, model_max_plot]))
+    np.savetxt('%s/best_model%s.txt' % (outdir, '_misfit_max_' + str(n_sigma_keep)), np.vstack([z_plot, model_best_plot]))
 
-    # initialize frequency axis characteristics (large and dense enough to contain all available modes)
-    fmin = np.inf
-    fmax = 0
-    df = np.inf
     # prepare all necessary fields for forward modelling tomo data
     all_curves = dispersion_dict_tomo['DispersionCurves'] + dcurves_global
-    for dcurve in all_curves:
-        df_new = np.median(np.diff(dcurve.faxis))
-        fmax_new = max(dcurve.faxis)
-        fmin_new = min(dcurve.faxis)
-        if df_new < df:
-            df = df_new
-        if fmin_new < fmin:
-            fmin = fmin_new
-        if fmax_new > fmax:
-            fmax = fmax_new
-    nf_ceil = int(np.ceil((fmax - fmin + df) / df))
-    rest_ceil = int(np.ceil(nf_ceil / num_threads))
-    nf_new = num_threads * rest_ceil
-    faxis_global = np.linspace(fmin, fmax + df, nf_new)
-    nf = len(faxis_global)
+
+    # initialize frequency axis characteristics (large and dense enough to contain all available modes)
+    # fmin = np.inf
+    # fmax = 0
+    # df = np.inf
+    # for dcurve in all_curves:
+    #     df_new = np.median(np.diff(dcurve.faxis))
+    #     fmax_new = max(dcurve.faxis)
+    #     fmin_new = min(dcurve.faxis)
+    #     if df_new < df:
+    #         df = df_new
+    #     if fmin_new < fmin:
+    #         fmin = fmin_new
+    #     if fmax_new > fmax:
+    #         fmax = fmax_new
+    # nf_ceil = int(np.ceil((fmax - fmin + df) / df))
+    # rest_ceil = int(np.ceil(nf_ceil / num_threads))
+    # nf_new = num_threads * rest_ceil
+    # faxis_global = np.linspace(fmin, fmax + df, nf_new)
+    # nf = len(faxis_global)
+    # pickle.dump(faxis_global, open("%s/faxis_global.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
 
     # prepare container dictionary for average of forward modelling results
     modes_all = dict()
@@ -245,11 +251,14 @@ if __name__ == "__main__":
             print('MPI mode verbose'+'\n')
             print('number of models to process' + '\n')
             print(n)
+            forward_dcurves_global = [None] * n
+            forward_dcurves_tomo = [None] * n
+            misfit_table_global = np.zeros((n, 2))
         mpi_comm.Barrier()
         mpi_comm.Bcast([models, MPI.DOUBLE], root=0)
         n_load = len(np.arange(mpi_rank, n, mpi_size))
-        forward_dcurves_global = [None] * n_load
-        forward_dcurves_tomo = [None] * n_load
+        forward_dcurves_global_loc = [None] * n_load
+        forward_dcurves_tomo_loc = [None] * n_load
         misfit_table = np.nan * np.zeros((n_load, 2))
         for (i, i_loc) in zip(np.arange(mpi_rank, n, mpi_size), range(n_load)):
             m = models[i]
@@ -264,12 +273,16 @@ if __name__ == "__main__":
                 lm._costfunc_3d(m, ny, num_threads, 0.5)
             misfit_table[i_loc, 0] = misfit_global_new
             misfit_table[i_loc, 1] = misfit_tomo_new
-            forward_dcurves_global[i_loc] = modes_all_new
-            forward_dcurves_tomo[i_loc] = dc_calc_all_new
+            forward_dcurves_global_loc[i_loc] = modes_all_new
+            forward_dcurves_tomo_loc[i_loc] = dc_calc_all_new
         mpi_comm.Barrier()
-        mpi_comm.Allgather([misfit_table, MPI.DOUBLE],
-                           [forward_dcurves_global, MPI.DOUBLE],
-                           [forward_dcurves_tomo, MPI.DOUBLE])
+        # GATHER COMMANDS NOT TESTED !!!!
+        mpi_comm.Allgather([misfit_table],
+                           [misfit_table_global])
+        mpi_comm.Allgather([forward_dcurves_global],
+                           [forward_dcurves_global_loc])
+        mpi_comm.Allgather([forward_dcurves_tomo],
+                           [forward_dcurves_tomo_loc])
         print('MPI loop finished' + '\n')
         print('len(misfit_table)'+'\n')
         print(len(misfit_table))
@@ -298,7 +311,8 @@ if __name__ == "__main__":
     # save the full dict per model (as in cost function)
     dict_forward_modelling = {'forward_dcurves_global': forward_dcurves_global,
                               'forward_dcurves_tomo': forward_dcurves_tomo,
-                              'misfit_table': misfit_table}
+                              'misfit_table': misfit_table,
+                              'faxis_global': faxis_global}
     pickle.dump(dict_forward_modelling, open("%s/fwd_modelling.pickle" % outdir, "wb"), protocol=pickle.HIGHEST_PROTOCOL)
 
 
