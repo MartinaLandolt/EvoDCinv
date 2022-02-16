@@ -435,7 +435,8 @@ def loop_on_cells(df_velocity_global, df_thickness_global, vp_over_vs_ratio, n_l
             dx_tomo = np.median(np.diff(dict_disp_curves_tomo['X_coord'][0, :]))
             n_skip = int(np.floor(x_step_for_choosing_tomo_curves / dx_tomo))
             dict_disp_curves_tomo['DispersionCurve'] = dict_disp_curves_tomo['DispersionCurve'][::n_skip, ::n_skip, :]
-            dict_disp_curves_tomo['Uncertainties'] = dict_disp_curves_tomo['Uncertainties'][::n_skip, ::n_skip, :]
+            dict_disp_curves_tomo['Uncertainties'] = dict_disp_curves_tomo['Uncertainties'][::n_skip, ::n_skip, :] / 3
+            print('WARNING : tomography uncert devided by 3')
             dict_disp_curves_tomo['X_coord'] = dict_disp_curves_tomo['X_coord'][::n_skip, ::n_skip]
             dict_disp_curves_tomo['Y_coord'] = dict_disp_curves_tomo['Y_coord'][::n_skip, ::n_skip]
             dict_disp_curves_tomo['MissingSamples'] = dict_disp_curves_tomo['MissingSamples'][::n_skip, ::n_skip]
