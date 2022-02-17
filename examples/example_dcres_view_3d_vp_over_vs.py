@@ -148,11 +148,11 @@ if __name__ == "__main__":
     model_min_plot = np.loadtxt(min_model_file)
     model_max_plot = np.loadtxt(max_model_file)
     best_model_plot = np.loadtxt(best_model_file)
-    z_plot = model_min_plot[0, :]
+    # z_plot = model_min_plot[0, :]
     model_mean_vals = model_mean_plot[1, :]
     model_min_vals = model_min_plot[1, :]
     model_max_vals = model_max_plot[1, :]
-    best_model_vals = best_model_plot[1, :]
+    model_best_vals = best_model_plot[1, :]
     # with open(best_model_file, 'rb') as f1:
         # best_model = pickle.load(f1)
 
@@ -161,7 +161,7 @@ if __name__ == "__main__":
     mean_true_model = np.nanmax(dispersion_dict_tomo['true_model'], axis=0)
     mean_true_thickness = mean_true_model[:, -1]
     # best_model_vals = best_model.model_vp_over_vs
-    _, model_best_vals = make_plottable_model(mean_true_thickness, best_model_vals, zmax=zmax)
+    # _, model_best_vals = make_plottable_model(mean_true_thickness, best_model_vals, zmax=zmax)
 
     # Plot all models colored by apost relative to different misfits
     fig1 = plt.figure()

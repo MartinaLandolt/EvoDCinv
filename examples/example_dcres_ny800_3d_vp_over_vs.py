@@ -184,7 +184,7 @@ if __name__ == "__main__":
         model_min[z] = np.nanmin([model[z] for model in models])
         model_max[z] = np.nanmax([model[z] for model in models])
 
-    mean_true_model = np.nanmean(dispersion_dict_tomo['true_model'], axis=0)
+    mean_true_model = np.nanmax(dispersion_dict_tomo['true_model'], axis=0)
     mean_true_thickness = mean_true_model[:, -1]
     z_plot, model_min_plot = make_plottable_model(mean_true_thickness, model_min, zmax=zmax)
     z_plot, model_max_plot = make_plottable_model(mean_true_thickness, model_max, zmax=zmax)
