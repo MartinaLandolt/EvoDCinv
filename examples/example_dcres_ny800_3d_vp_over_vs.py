@@ -97,7 +97,7 @@ if __name__ == "__main__":
     # set parameters
     ny = 800
     perc = 1/np.sqrt(np.e)
-    n_sigma_keep = 1
+    n_sigma_keep = 1.1
     outdir = "output/" + output_name
     zmin = 0
     zmax = 1500
@@ -142,6 +142,9 @@ if __name__ == "__main__":
         all_energy.append(m.misfits.ravel())
     models = np.hstack(all_models).transpose()
     energy = np.hstack(all_energy)
+    
+    models, i_unique = np.unique(models, axis=0, return_index=True)
+    energy = energy[i_unique]
     n_models = len(models)
     print('total number of explored models : '+str(n_models))
 
