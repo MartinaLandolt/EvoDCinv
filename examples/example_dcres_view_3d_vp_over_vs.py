@@ -6,8 +6,10 @@ from matplotlib.colors import Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import os
 import argparse
+
 try:
-    import cPickle as pickle
+    import pickle5 as pickle
+    # import cPickle as pickle
 except ImportError:
     import pickle
 try:
@@ -56,13 +58,14 @@ if __name__ == "__main__":
     colorby = 'misfit'
     # clim_mode = 'fixed'
     clim_mode = 'normalized'
-    misfit_bounds = [0, 0.8]
+    misfit_bounds = [0, 1]
     outdir = "output/" + output_name # Output directory
     fwd_modelling_file = outdir + "/fwd_modelling.pickle"
-    mean_model_file = outdir + "/mean_model_misfit_max_0.8.txt"
-    min_model_file = outdir + "/min_models_misfit_max_0.8.txt"
-    max_model_file = outdir + "/max_models_misfit_max_0.8.txt"
-    best_model_file = outdir + "/best_model.pickle"
+    mean_model_file = outdir + "/mean_model_misfit_max_1.txt"
+    min_model_file = outdir + "/min_models_misfit_max_1.txt"
+    max_model_file = outdir + "/max_models_misfit_max_1.txt"
+    #best_model_file = outdir + "/best_model.pickle"
+    best_model_file = outdir + "/best_model_misfit_max_1.txt"
     figdir = outdir + "/figures"  # Output figures directory
     cmap = "viridis_r"  # Colormap
     if not os.path.exists(figdir):
@@ -101,10 +104,10 @@ if __name__ == "__main__":
         apost_tomo_dcurves = dict_forward_modelling['misfit_table'][:, 1]
         forward_dcurves_global = dict_forward_modelling['forward_dcurves_global']
         forward_dcurves_tomo = dict_forward_modelling['forward_dcurves_tomo']
-        # faxis_global = dict_forward_modelling['faxis_global'] # todo: reactivate this line after new run of dcres
-    faxis_file = outdir + "/faxis_global.pickle"
-    with open(faxis_file, 'rb') as f1:
-        faxis_global = pickle.load(f1) # todo: remove this line after new run of dcres
+        faxis_global = dict_forward_modelling['faxis_global'] # todo: reactivate this line after new run of dcres
+    # faxis_file = outdir + "/faxis_global.pickle"
+    # with open(faxis_file, 'rb') as f1:
+        # faxis_global = pickle.load(f1) # todo: remove this line after new run of dcres
 
     # read models & energy
     with open(outdir + '/models.pickle', 'rb') as f1:
@@ -144,18 +147,20 @@ if __name__ == "__main__":
     model_mean_plot = np.loadtxt(mean_model_file)
     model_min_plot = np.loadtxt(min_model_file)
     model_max_plot = np.loadtxt(max_model_file)
+    best_model_plot = np.loadtxt(best_model_file)
     z_plot = model_min_plot[0, :]
     model_mean_vals = model_mean_plot[1, :]
     model_min_vals = model_min_plot[1, :]
     model_max_vals = model_max_plot[1, :]
-    with open(best_model_file, 'rb') as f1:
-        best_model = pickle.load(f1)
+    best_model_vals = best_model_plot[1, :]
+    # with open(best_model_file, 'rb') as f1:
+        # best_model = pickle.load(f1)
 
     # Import best model
     # todo: with the new version of example dcres - read as text file
     mean_true_model = np.nanmax(dispersion_dict_tomo['true_model'], axis=0)
     mean_true_thickness = mean_true_model[:, -1]
-    best_model_vals = best_model.model_vp_over_vs
+    # best_model_vals = best_model.model_vp_over_vs
     _, model_best_vals = make_plottable_model(mean_true_thickness, best_model_vals, zmax=zmax)
 
     # Plot all models colored by apost relative to different misfits

@@ -52,8 +52,8 @@ if __name__ == "__main__":
     # Parameters
     ny = 800 #200                        # Number of velocity discretization points
     max_run = 10                    # Number of runs
-    popsize = 15
-    max_iter = 25
+    popsize = 16
+    max_iter = 50
     outdir = "output/" + output_name             # Output directory
 
 

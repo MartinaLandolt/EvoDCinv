@@ -14,7 +14,7 @@ dtype=$3
 out_name=$4
 data=$5
 data_tomo=$6
-$MPIEXEC -np $num_procs --bind-to core:overload-allowed --map-by ppr:$num_procs:socket:pe=$num_threads $EXEC -n $num_threads $dtype $out_name $data $data_tomo > log_run_MPI_${num_procs}_OMP_${num_threads}.txt
+$MPIEXEC -np $num_procs --bind-to core:overload-allowed --map-by ppr:$num_procs:node:pe=$num_threads $EXEC -n $num_threads $dtype $out_name $data $data_tomo > log_run_MPI_${num_procs}_OMP_${num_threads}.txt
 
 #python example_dcres.py -n $num_threads $dtype $out_name $data>> output/log_file_dcinv_ny800.txt
 

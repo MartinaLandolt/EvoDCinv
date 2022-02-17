@@ -80,7 +80,8 @@ if __name__ == "__main__":
     global_data_dir = args.input_global_curves
     tomo_file = args.input_dispersion_dict_tomo
 
-    mpi = mpi_exist
+    # mpi = mpi_exist
+    mpi = False
     # if mpi and not mpi_exist:
     #     raise ValueError("mpi4py is not installed or not properly installed")
 
@@ -96,7 +97,7 @@ if __name__ == "__main__":
     # set parameters
     ny = 800
     perc = 1/np.sqrt(np.e)
-    n_sigma_keep = 0.8
+    n_sigma_keep = 1
     outdir = "output/" + output_name
     zmin = 0
     zmax = 1500
@@ -142,6 +143,7 @@ if __name__ == "__main__":
     models = np.hstack(all_models).transpose()
     energy = np.hstack(all_energy)
     n_models = len(models)
+    print('total number of explored models : '+str(n_models))
 
     # keep the same frequency axis
     faxis_global = m._faxis_global
@@ -156,6 +158,7 @@ if __name__ == "__main__":
     # threshold = perc * apost.max()
     # idx = np.where(apost > threshold)[0]
     idx = np.where(energy < n_sigma_keep)[0]
+    print('kept models with misfit < '+  str(n_sigma_keep) + ' : ' + str(len(idx)))
     models = models[idx]
     energy = energy[idx]
     apost = apost[idx]
@@ -251,9 +254,9 @@ if __name__ == "__main__":
             print('MPI mode verbose'+'\n')
             print('number of models to process' + '\n')
             print(n)
-            forward_dcurves_global = [None] * n
-            forward_dcurves_tomo = [None] * n
-            misfit_table_global = np.zeros((n, 2))
+        forward_dcurves_global = [None] * n
+        forward_dcurves_tomo = [None] * n
+        misfit_table_global = np.zeros((n, 2))
         mpi_comm.Barrier()
         mpi_comm.Bcast([models, MPI.DOUBLE], root=0)
         n_load = len(np.arange(mpi_rank, n, mpi_size))
