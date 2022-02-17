@@ -1382,7 +1382,10 @@ def main():
                              str(Path(make_synthetics.path_out_format_1)))
 
         if settings_synthetics.plot_velocities:
-            save_model_plots(df_vp_interp, 'vs',
+            save_model_plots(df_vs_interp, 'vs',
+                             settings_synthetics.n_cells, settings_synthetics.n_cells,
+                             str(Path(make_synthetics.path_out_format_1)))
+            save_model_plots(df_vp_interp, 'vp',
                              settings_synthetics.n_cells, settings_synthetics.n_cells,
                              str(Path(make_synthetics.path_out_format_1)))
 
